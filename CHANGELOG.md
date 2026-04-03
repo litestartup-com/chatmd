@@ -17,6 +17,7 @@ Cross-platform startup experience improvements + configuration audit + code qual
 
 ### Fixed
 
+- Assistant mode (`--mode assistant`) now monitors all `.md` files across the entire workspace via `watch_dirs: ["."]`, with internal directories (`.chatmd`, `.git`, `node_modules`, etc.) excluded
 - Windows `chatmd service install` and `_start_agent_now` now use `pythonw.exe` instead of `python.exe`, eliminating the cmd window popup when the service starts
 - Removed unimplemented default config entries (`trigger.confirm`, `async.retry`, `commands.natural_language`, `display_name`, `preferences`) to avoid misleading users
 - `KernelGate` now respects `logging.audit` config toggle

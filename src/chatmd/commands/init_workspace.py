@@ -124,6 +124,13 @@ def run_init(path_str: str, *, mode: str | None = None, no_git: bool = False) ->
     # Always create config
     agent_config = _DEFAULT_AGENT_YAML.copy()
     agent_config["workspace"] = {"mode": resolved_mode}
+    if resolved_mode == "assistant":
+        agent_config["watcher"] = {
+            "debounce_ms": 300,
+            "watch_files": [],
+            "watch_dirs": ["."],
+            "ignore_patterns": ["_index.md"],
+        }
     _write_yaml(chatmd_dir / "agent.yaml", agent_config)
     _write_yaml(chatmd_dir / "user.yaml", _DEFAULT_USER_YAML)
 

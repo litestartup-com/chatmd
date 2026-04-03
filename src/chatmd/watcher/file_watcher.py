@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_EXCLUDED_DIRS = {".chatmd", ".git", "node_modules", ".obsidian", ".vscode", ".idea", "__pycache__"}
+
 
 class _ChangeHandler(FileSystemEventHandler):
     """Handle file system events, filtering and debouncing."""
@@ -85,6 +87,10 @@ class _ChangeHandler(FileSystemEventHandler):
         except ValueError:
             return False
 
+        # Exclude internal directories
+        if any(part in _EXCLUDED_DIRS for part in rel.parts):
+            return False
+
         rel_str = str(rel).replace("\\", "/")
 
         # Direct file match
@@ -93,6 +99,8 @@ class _ChangeHandler(FileSystemEventHandler):
 
         # Directory match
         for d in self._watch_dirs:
+            if d == ".":
+                return True
             d_clean = d.rstrip("/")
             if rel_str.startswith(d_clean + "/") or rel_str.startswith(d_clean + "\\"):
                 return True
