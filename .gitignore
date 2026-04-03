@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+.eggs/
+
+# IDE
+.vscode/
+.idea/
+
+# ChatMD runtime (user workspace, not this repo)
+# .chatmd/state.json
+# .chatmd/tasks.json
+# .chatmd/queue.json
+# .chatmd/logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/

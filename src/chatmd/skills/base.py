@@ -1,0 +1,69 @@
+"""Skill base classes and data structures."""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from chatmd.i18n import t
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+@dataclass
+class SkillResult:
+    """Result returned by a Skill execution."""
+
+    success: bool
+    output: str
+    error: str | None = None
+    metadata: dict | None = None
+
+
+@dataclass
+class ParamDef:
+    """Parameter definition for a Skill."""
+
+    name: str
+    type: str = "string"
+    required: bool = False
+    default: str | None = None
+    position: int | None = None
+    choices: list[str] | None = None
+    description: str = ""
+
+
+@dataclass
+class SkillContext:
+    """Execution context injected by the Agent engine."""
+
+    source_file: Path
+    source_line: int
+    workspace: Path
+
+
+class Skill(ABC):
+    """Base class for all Skills."""
+
+    name: str = ""
+    description: str = ""
+    category: str = "general"
+    requires_network: bool = False
+    is_async: bool = False
+    is_dangerous: bool = False
+    aliases: list[str] = []
+    params_schema: list[ParamDef] = []
+
+    @abstractmethod
+    def execute(self, input_text: str, args: dict, context: SkillContext) -> SkillResult:
+        """Execute the skill and return a result."""
+        ...
+
+    def help(self) -> str:
+        """Return usage help text (called by /help <command>)."""
+        key = f"skill.{self.name}.description"
+        localized = t(key)
+        # If t() returns the key itself, no i18n entry exists — use raw description
+        return localized if localized != key else self.description

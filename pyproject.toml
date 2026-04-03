@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chatmd"
+version = "0.2.1"
+description = "A local-first, text-driven personal AI Agent engine"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "ChatMD Team" },
+]
+keywords = ["ai", "agent", "markdown", "local-first"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "click>=8.1",
+    "watchdog>=3.0",
+    "pyyaml>=6.0",
+    "httpx>=0.25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1",
+    "coverage>=7.3",
+    "build>=1.0",
+    "twine>=5.0",
+]
+
+[project.scripts]
+chatmd = "chatmd.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chatmd"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/chatmd/i18n/zh_CN.py" = ["N999"]
+"tests/test_i18n.py" = ["N802"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: pure unit tests — fast, no I/O (default)",
+    "integration: tests that touch filesystem or combine modules",
+    "e2e: end-to-end pipeline tests",
+    "slow: tests that take > 1s",
+]
+
+[tool.coverage.run]
+source = ["src/chatmd"]
