@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import logging
 import re
 import shutil
@@ -103,9 +104,9 @@ class NewSessionSkill(Skill):
         self._index_manager = index_manager
 
     def execute(self, input_text: str, args: dict, context: SkillContext) -> SkillResult:
-        workspace = context.workspace
-        chat_md = workspace / "chat.md"
-
+        # Resolve chat.md from interaction_root (not source_file.parent)
+        iroot = context.interaction_root or context.workspace
+        chat_md = iroot / "chat.md"
         if not chat_md.exists():
             return SkillResult(
                 success=False, output="",
@@ -130,8 +131,8 @@ class NewSessionSkill(Skill):
         date_prefix = now.strftime("%Y-%m%d-%H%M")
         archive_name = f"{date_prefix}-{topic}.md"
 
-        # Ensure chat/ directory exists
-        chat_dir = workspace / "chat"
+        # Ensure chat/ directory exists (sibling of chat.md in interaction_root)
+        chat_dir = iroot / "chat"
         chat_dir.mkdir(exist_ok=True)
 
         # Handle filename conflict
@@ -229,5 +230,26 @@ class NewSessionSkill(Skill):
 
     @staticmethod
     def _build_fresh_chat_md() -> str:
-        """Build a minimal fresh chat.md for the new session."""
-        return f"{t('init.welcome_title')}\n\n---\n\n"
+        """Build a fresh chat.md with timestamp header."""
+        now = datetime.now()
+        today = now.date()
+        weekday = t("output.weekday.names").split(",")[today.weekday()].strip()
+        week_num = today.isocalendar()[1]
+        day_of_year = today.timetuple().tm_yday
+        total_days = 366 if calendar.isleap(today.year) else 365
+        pct = day_of_year / total_days * 100
+
+        date_str = t(
+            "new.session_timestamp",
+            datetime=now.strftime(t("new.datetime_format")),
+            weekday=weekday,
+            week=week_num,
+            day=day_of_year,
+            pct=f"{pct:.2f}",
+            year=today.year,
+        )
+        return (
+            f"{t('init.welcome_title')}\n\n"
+            f"> {date_str}\n\n"
+            f"---\n\n"
+        )

@@ -28,9 +28,10 @@ class IndexManager:
     and regenerates the index table.
     """
 
-    def __init__(self, workspace: Path) -> None:
+    def __init__(self, workspace: Path, *, interaction_root: Path | None = None) -> None:
         self._workspace = workspace
-        self._chat_dir = workspace / "chat"
+        root = interaction_root if interaction_root is not None else workspace
+        self._chat_dir = root / "chat"
         self._index_file = self._chat_dir / "_index.md"
 
     @property

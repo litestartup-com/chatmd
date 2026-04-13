@@ -246,6 +246,50 @@ def run_stop(workspace_str: str) -> None:
     click.echo(t("cli.stop_signal_sent", pid=pid))
 
 
+def run_restart(workspace_str: str) -> None:
+    """Restart the ChatMD Agent (stop then start as daemon).
+
+    Behaviour:
+    - If a daemon is running → stop it, then start a new daemon.
+    - If no daemon is running → just start a new daemon.
+    - Always restarts in daemon (background) mode.
+    """
+    workspace = Path(workspace_str).resolve()
+    chatmd_dir = workspace / ".chatmd"
+
+    if not chatmd_dir.is_dir():
+        click.echo(t("cli.not_workspace", workspace=workspace))
+        click.echo(t("cli.run_init_first"))
+        sys.exit(1)
+
+    pid_file = chatmd_dir / "agent.pid"
+    was_running = False
+
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text(encoding="utf-8").strip())
+            if _is_process_alive(pid):
+                was_running = True
+                click.echo(t("cli.restart_stopping", pid=pid))
+                run_stop(workspace_str)
+
+                # Wait for process to fully exit (up to 5s)
+                import time
+                for _ in range(10):
+                    if not _is_process_alive(pid):
+                        break
+                    time.sleep(0.5)
+        except (ValueError, OSError):
+            pid_file.unlink(missing_ok=True)
+
+    if was_running:
+        click.echo(t("cli.restart_starting"))
+    else:
+        click.echo(t("cli.restart_not_running"))
+
+    run_start_daemon(workspace_str)
+
+
 def run_status(workspace_str: str) -> None:
     """Show Agent status."""
     workspace = Path(workspace_str).resolve()
@@ -274,11 +318,7 @@ def run_status(workspace_str: str) -> None:
         pid_file.unlink(missing_ok=True)
 
     # Show workspace info
-    from chatmd.infra.config import Config
-
-    config = Config(workspace)
     click.echo(t("cli.workspace_label", workspace=workspace))
-    click.echo(t("cli.mode_label", mode=config.workspace_mode))
 
     skills_dir = chatmd_dir / "skills"
     if skills_dir.exists():

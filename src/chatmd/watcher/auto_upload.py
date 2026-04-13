@@ -43,7 +43,7 @@ class AutoUploadHandler:
         self._provider = provider
         self._max_size_mb = max_size_mb
         self._extensions = extensions or {
-            "jpg", "jpeg", "png", "gif", "webp", "svg", "bmp",
+            "jpg", "jpeg", "png", "gif", "webp", "svg", "ico",
         }
         # Per-file set of local_path strings already seen / uploaded
         self._known: dict[str, set[str]] = {}
@@ -59,14 +59,14 @@ class AutoUploadHandler:
         images = find_local_images(content)
         local_paths = {img["local_path"] for img in images}
 
-        # First call for this file — seed the known set, don't upload
+        # Initialise known set on first call (empty — so existing local
+        # images are treated as "new" and will be uploaded).
         if file_key not in self._known:
-            self._known[file_key] = local_paths
-            logger.debug(
-                "Auto-upload: seeded %d known images for %s",
-                len(local_paths), filepath.name,
+            self._known[file_key] = set()
+            logger.info(
+                "Auto-upload: first scan for %s, found %d local image(s)",
+                filepath.name, len(local_paths),
             )
-            return False
 
         # Find genuinely new references
         known = self._known[file_key]

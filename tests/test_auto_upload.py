@@ -22,29 +22,31 @@ def _fail_provider(error: str = "timeout"):
 
 
 class TestAutoUploadSeeding:
-    def test_first_call_seeds_known_set(self, tmp_path):
-        """First call should seed known images without uploading."""
+    def test_first_call_uploads_existing_images(self, tmp_path):
+        """First call should upload existing local images."""
         md = tmp_path / "chat.md"
         md.write_text("![pic](photo.png)\n", encoding="utf-8")
         (tmp_path / "photo.png").write_bytes(b"PNG")
 
-        provider = _mock_provider()
+        url = "https://cdn.example.com/photo.png"
+        provider = _mock_provider(url)
         handler = AutoUploadHandler(provider=provider)
         modified = handler.process(md, md.read_text(encoding="utf-8"))
 
-        assert modified is False
-        provider.upload.assert_not_called()
+        assert modified is True
+        provider.upload.assert_called_once()
+        result = md.read_text(encoding="utf-8")
+        assert url in result
 
     def test_second_call_no_new_images(self, tmp_path):
-        """Second call with same content should not upload."""
+        """Second call with no new local images should not upload."""
         md = tmp_path / "chat.md"
-        md.write_text("![pic](photo.png)\n", encoding="utf-8")
-        (tmp_path / "photo.png").write_bytes(b"PNG")
+        md.write_text("Hello\n", encoding="utf-8")
 
         provider = _mock_provider()
         handler = AutoUploadHandler(provider=provider)
 
-        # Seed
+        # First call — no images
         handler.process(md, md.read_text(encoding="utf-8"))
         # Same content again
         modified = handler.process(md, md.read_text(encoding="utf-8"))
@@ -116,26 +118,27 @@ class TestAutoUploadNewImages:
         assert modified is True
         assert call_count[0] == 2
 
-    def test_skips_already_known_image(self, tmp_path):
-        """Image already in the seed should not be re-uploaded."""
+    def test_skips_already_uploaded_image(self, tmp_path):
+        """Image already uploaded should not be re-uploaded."""
         md = tmp_path / "chat.md"
-        (tmp_path / "old.png").write_bytes(b"PNG")
         (tmp_path / "new.png").write_bytes(b"PNG")
-        md.write_text("![old](old.png)\n", encoding="utf-8")
+        # Start with only a remote image (already uploaded)
+        md.write_text("![old](https://cdn.example.com/old.png)\n", encoding="utf-8")
 
         provider = _mock_provider("https://cdn.example.com/new.png")
         handler = AutoUploadHandler(provider=provider)
 
-        # Seed with old.png
+        # First call — no local images to upload
         handler.process(md, md.read_text(encoding="utf-8"))
+        assert provider.upload.call_count == 0
 
-        # Add new.png
-        new_content = "![old](old.png)\n![new](new.png)\n"
+        # Add new local image
+        new_content = "![old](https://cdn.example.com/old.png)\n![new](new.png)\n"
         md.write_text(new_content, encoding="utf-8")
 
         handler.process(md, md.read_text(encoding="utf-8"))
 
-        # Should only upload new.png, not old.png
+        # Should only upload new.png
         assert provider.upload.call_count == 1
         uploaded_path = provider.upload.call_args[0][0]
         assert uploaded_path.name == "new.png"
@@ -277,24 +280,31 @@ class TestAutoUploadHtml:
 
 class TestAutoUploadReset:
     def test_reset_single_file(self, tmp_path):
-        """Reset should clear known images for a specific file."""
+        """Reset should clear known images so next call re-uploads."""
         md = tmp_path / "chat.md"
         (tmp_path / "photo.png").write_bytes(b"PNG")
         md.write_text("![pic](photo.png)\n", encoding="utf-8")
 
-        provider = _mock_provider()
+        url = "https://cdn.example.com/photo.png"
+        provider = _mock_provider(url)
         handler = AutoUploadHandler(provider=provider)
 
-        # Seed
+        # First call uploads
         handler.process(md, md.read_text(encoding="utf-8"))
+        assert provider.upload.call_count == 1
 
         # Reset
         handler.reset(md)
+        provider.upload.reset_mock()
 
-        # Next call should re-seed, not upload
+        # Write back a local image (simulate re-adding)
+        md.write_text("![pic](photo.png)\n", encoding="utf-8")
+        (tmp_path / "photo.png").write_bytes(b"PNG")
+
+        # Next call should upload again after reset
         modified = handler.process(md, md.read_text(encoding="utf-8"))
-        assert modified is False
-        provider.upload.assert_not_called()
+        assert modified is True
+        provider.upload.assert_called_once()
 
     def test_reset_all(self, tmp_path):
         """Reset(None) should clear all known images."""

@@ -45,8 +45,15 @@ MESSAGES: dict[str, str] = {
     "output.help.group.datetime": "日期时间",
     "output.help.group.ai": "AI 智能",
     "output.help.group.markdown": "Markdown 模板",
+    "output.help.group.cron": "定时任务",
     "output.help.group.utility": "工具",
     "output.help.group.custom": "自定义",
+    "output.help.overview_hint": (
+        "使用 `/help <别名>` 查看分组详情（如 `/help dt`），"
+        "`/help <命令>` 查看单个命令。"
+    ),
+    "output.help.group_empty": "该分组暂无命令。",
+    "output.help.cmd_not_found": "未找到命令: `/{cmd}`",
 
     # ── /status output ──────────────────────────────────────────────────
     "output.status.running": "🟢 Agent 运行中\n",
@@ -194,12 +201,170 @@ MESSAGES: dict[str, str] = {
     "output.upload.detail_failed": "❌ {path}: {detail}",
     "output.upload.detail_not_found": "⚠️ {path}: 文件不存在，已跳过",
     "output.upload.detail_skipped": "⚠️ {path}: {reason}",
+    "skill.upload.help_text": (
+        "### 使用方式\n\n"
+        "| 命令 | 说明 |\n"
+        "|------|------|\n"
+        "| `/upload` | 扫描当前文件中的本地图片，全部上传并替换为远程 URL |\n"
+        "| `/upload <路径>` | 上传单个图片文件，返回远程 URL |\n\n"
+        "### 自动上传\n\n"
+        "在 `agent.yaml` 中启用 `upload.auto` 后，监控的 `.md` 文件中新增的本地图片会在保存时"
+        "**自动上传**并替换为远程 URL，无需手动执行 `/upload`。\n\n"
+        "### 配置（`agent.yaml` → `upload:`）\n\n"
+        "```yaml\n"
+        "upload:\n"
+        "  auto: true          # 启用保存时自动上传\n"
+        "  max_size_mb: 10     # 最大文件大小（默认 10MB）\n"
+        "  extensions:         # 允许的扩展名（默认如下）\n"
+        "    - jpg\n"
+        "    - jpeg\n"
+        "    - png\n"
+        "    - gif\n"
+        "    - webp\n"
+        "    - svg\n"
+        "    - ico\n"
+        "```\n\n"
+        "### 前置条件\n\n"
+        "- `ai.providers` 中需配置 `litestartup` 类型的 provider\n"
+        "- Provider 的 API Key 需具有上传权限\n\n"
+        "### 支持的图片语法\n\n"
+        "| 语法 | 示例 |\n"
+        "|------|------|\n"
+        "| Markdown | `![描述](./img/photo.png)` |\n"
+        "| HTML | `<img src=\"./img/photo.png\" />` |\n\n"
+        "远程 URL（`http://`、`https://`）会自动跳过。"
+    ),
+
+    # ── /notify skill ─────────────────────────────────────────────────
+    "skill.notify.description": "发送通知",
+    "error.notify_empty": "请提供通知内容",
+    "error.notify_not_configured": "通知管理器未配置",
+    "error.notify_disabled": "通知功能已在配置中禁用",
+    "output.notify.title": "ChatMD 提醒",
+    "output.notify.success": "✅ 通知已发送（{channels}）：{message}",
+    "skill.notify.help_text": (
+        "### 用法\n\n"
+        "| 命令 | 说明 |\n"
+        "|------|------|\n"
+        "| `/notify <消息>` | 通过所有已配置的通道发送通知 |\n\n"
+        "### 配合 Cron（定时提醒）\n\n"
+        "```cron\n"
+        "0 18 * * * /notify 该吃晚饭了！\n"
+        "0 9 * * 1 /notify 周会还有 15 分钟\n"
+        "```\n\n"
+        "### 通知通道\n\n"
+        "| 通道 | 说明 |\n"
+        "|------|------|\n"
+        "| **FileChannel** | 追加写入 `notification.md`（始终启用） |\n"
+        "| **SystemChannel** | 桌面弹窗（Windows/macOS/Linux） |\n"
+        "| **EmailChannel** | 通过 LiteStartup API 发送邮件 |\n\n"
+        "### 配置（`agent.yaml` → `notification:`）\n\n"
+        "```yaml\n"
+        "notification:\n"
+        "  enabled: true\n"
+        "  system_notify: true     # 桌面弹窗\n"
+        "  email:\n"
+        "    enabled: true\n"
+        "    from: support@chatmarkdown.org\n"
+        "    from_name: ChatMarkdown\n"
+        "    to: user@example.com\n"
+        "```\n\n"
+        "### 前置条件\n\n"
+        "- `notification.enabled: true`\n"
+        "- 邮件通知：需要配置 `litestartup` provider 并具有 `notification` 权限\n"
+        "- 桌面通知：需要操作系统支持"
+    ),
+
+    # ── /confirm skill ─────────────────────────────────────────────────────
+    "skill.confirm.description": "执行待确认的命令",
+    "skill.confirm.help_text": (
+        "### 用法\n\n"
+        "| 命令 | 说明 |\n"
+        "|------|------|\n"
+        "| `/confirm` | 执行最近一条待确认命令 |\n"
+        "| `/confirm #confirm-3` | 执行指定 ID 的待确认命令 |\n"
+        "| `/confirm list` | 列出所有待确认命令 |\n\n"
+        "### 工作原理\n\n"
+        "在 `trigger.confirm.commands` 中列出的命令需要显式确认才会执行。\n"
+        "输入这类命令时，会显示确认提示而不是直接执行。\n"
+        "输入 `/confirm` 确认执行，或删除提示行取消。\n\n"
+        "### 配置（`agent.yaml` → `trigger.confirm:`）\n\n"
+        "```yaml\n"
+        "trigger:\n"
+        "  confirm:\n"
+        "    enabled: true\n"
+        "    commands:\n"
+        "      - /sync\n"
+        "      - /upload\n"
+        "      - /new\n"
+        "```"
+    ),
 
     # ── /new session ───────────────────────────────────────────────────
     "error.new_no_chat_md": "chat.md 不存在",
     "error.new_empty_content": "无内容可归档",
     "output.new.success": "✅ 已归档至 chat/{archive}，新会话已开始",
     "new.fallback_topic": "通用对话",
+    "new.datetime_format": "%Y年%m月%d日 %H:%M:%S",
+    "new.session_timestamp": (
+        "{datetime} {weekday} | 第{week}周 第{day}天 ({pct}% of {year})"
+    ),
+
+    # ── /cron skill ──────────────────────────────────────────────────────
+    "skill.cron.description": "管理 cron 定时任务",
+    "error.cron_not_configured": "Cron 调度器未配置",
+    "error.cron_unknown_subcommand": "未知子命令: {subcmd}",
+    "output.cron.list_empty": "暂无已注册的 cron 任务 (0 个)",
+    "output.cron.list_header": "**Cron 任务** (已注册 {count} 个)\n",
+    "output.cron.status_summary": (
+        "**Cron 状态** — {total} 个任务"
+        " ({active} 活跃, {paused} 暂停)"
+        " | 共执行 {runs} 次, 失败 {fails} 次"
+    ),
+    "output.cron.next_header": "**即将执行** (未来 {count} 次)\n",
+    "output.cron.paused": "任务 `{job_id}` 已暂停",
+    "output.cron.resumed": "任务 `{job_id}` 已恢复",
+    "output.cron.run_triggered": "任务 `{job_id}` 已手动触发",
+    "output.cron.test_complete": "[测试] 任务 `{job_id}` 已执行",
+    "output.cron.validate_header": "**Cron 语法校验** (共 {count} 个任务)\n",
+    "output.cron.history_empty": "暂无执行历史",
+    "output.cron.history_header": "**执行历史** (共 {count} 条记录)\n",
+    "error.cron_missing_id": "需要指定任务 ID",
+    "error.cron_job_not_found": "未找到任务: {job_id}",
+    "error.cron_add_usage": "用法: /cron add <表达式> <命令>",
+    "error.cron_dangerous_command": "危险命令不允许在 cron 中使用: {command}",
+    "error.cron_no_file": "Cron 文件未配置",
+    "output.cron.added": "已添加 cron 任务: `{expr}` → `{command}`",
+    "output.cron.removed": "任务 `{job_id}` 已移除",
+    "skill.cron.help_text": (
+        "### 子命令\n\n"
+        "| 命令 | 说明 |\n"
+        "|------|------|\n"
+        "| `/cron` | 列出所有已注册任务及下次执行时间 |\n"
+        "| `/cron status` | 概览（含执行/失败统计） |\n"
+        "| `/cron next [N]` | 预览未来 N 次执行（默认 5） |\n"
+        "| `/cron pause <ID>` | 暂停指定任务 |\n"
+        "| `/cron resume <ID>` | 恢复暂停的任务 |\n"
+        "| `/cron run <ID>` | 手动触发一次 |\n"
+        "| `/cron test <ID>` | 测试执行（标记 `[TEST]`） |\n"
+        "| `/cron validate` | 语法校验所有 cron 代码块 |\n"
+        "| `/cron history [ID]` | 最近 20 条执行记录 |\n"
+        "| `/cron add <表达式> <命令>` | 添加任务到 cron.md |\n"
+        "| `/cron remove <ID>` | 注释掉 cron.md 中的任务 |\n\n"
+        "### 配置（`agent.yaml` → `cron:`）\n\n"
+        "| 配置项 | 默认值 | 说明 |\n"
+        "|--------|--------|------|\n"
+        "| `enabled` | `false` | 启用 cron 引擎 |\n"
+        "| `cron_file` | `cron.md` | 定时任务定义文件 |\n"
+        "| `job_timeout` | `300` | 单个任务最长执行秒数 |\n"
+        "| `max_failures` | `5` | 连续失败 N 次后自动暂停 |\n"
+        "| `missed_policy` | `run` | 启动时对错过的任务：`run` 补跑 / `skip` 跳过 |\n"
+        "| `tick_interval` | 自动 | 调度器轮询间隔（自动调优） |\n"
+        "| `max_history` | `20` | 每个任务保留的执行记录数 |\n\n"
+        "### 安全机制\n\n"
+        "危险命令（`upload`、`new`、`upgrade`）禁止在 cron 中使用。\n"
+        "连续失败 ≥ `max_failures` 次的任务会自动暂停并发送通知。"
+    ),
 
     # ── /sync skill errors ──────────────────────────────────────────────
     "error.sync_not_configured": "Git 同步未配置",
@@ -227,10 +392,15 @@ MESSAGES: dict[str, str] = {
 
     # ── Confirmation window ─────────────────────────────────────────────
     "confirm.prompt": (
-        "> ⏳ 确认执行 `{command}`？"
-        "（{delay}s 后自动执行，删除本行取消）"
+        "> ⚠️ `{command}` 需要确认 — "
+        "输入 `/confirm` 执行，删除本行取消"
         " `#{confirm_id}`"
     ),
+    "confirm.confirmed": "✅ 已确认并执行：`{command}`",
+    "confirm.cancelled": "❌ 已取消：`{command}`",
+    "confirm.nothing_pending": "没有待确认的命令。",
+    "confirm.list_header": "待确认命令：",
+    "confirm.list_item": "  {confirm_id}: `{command}`",
 
     # ── Index manager ───────────────────────────────────────────────────
     "index.header_note": "> 此文件由 ChatMD Agent 自动维护，请勿手动编辑。",
@@ -246,15 +416,14 @@ MESSAGES: dict[str, str] = {
     "init.welcome_ask": "/ask     — AI 对话",
     "init.welcome_status": "/status  — 显示 Agent 状态",
     "init.welcome_instruction": "在下方 `---` 分隔线之后输入命令，保存文件即可执行。",
-    "init.mode_prompt": (
-        "检测到目录已有文件，请选择模式\n"
-        "  full      — 完整工作空间（创建 chat.md + chat/）\n"
-        "  assistant — 仅注入助手能力（只创建 .chatmd/）\n"
-        "模式"
-    ),
-    "init.workspace_created": "✅ 工作空间已创建: {workspace} (模式: {mode})",
+    "init.workspace_created": "✅ 工作空间已创建: {workspace}",
     "init.run_start": "运行 chatmd start 启动 Agent",
     "init.open_chat": "用任何编辑器打开 chat.md 开始交互",
+    "init.notification_title": "通知中心",
+    "init.notification_subtitle": (
+        "ChatMarkdown 通知收件箱"
+        " — Agent 会自动追加通知，你可以在这里直接回应。"
+    ),
     "init.git_not_installed": "⚠️ Git 未安装，跳过 Git 初始化",
     "init.git_failed": "⚠️ Git 初始化失败: {error}",
 
@@ -273,13 +442,15 @@ MESSAGES: dict[str, str] = {
     "cli.agent_not_running": "⚪ Agent 未运行",
     "cli.agent_not_running_stale": "⚪ Agent 未运行（残留 PID 文件已清理）",
     "cli.workspace_label": "   工作空间: {workspace}",
-    "cli.mode_label": "   模式: {mode}",
     "cli.custom_skills": "   自定义 Skill: {yaml_count} YAML + {py_count} Python",
     "cli.daemon_already_running": "ℹ️ Agent 已在运行中 (PID {pid})",
     "cli.daemon_started": "🚀 Agent 已在后台启动 (PID {pid})\n   工作空间: {workspace}",
     "cli.daemon_log_hint": "   日志: {log}",
     "cli.daemon_stop_hint": "   运行 `chatmd stop` 停止 Agent",
     "cli.daemon_failed": "❌ Agent 后台启动失败 (退出码 {code})",
+    "cli.restart_stopping": "🔄 正在停止 Agent (PID {pid})...",
+    "cli.restart_starting": "🔄 正在重启 Agent...",
+    "cli.restart_not_running": "ℹ️ 未发现运行中的 Agent，启动新的后台进程...",
 
     # ── service CLI ─────────────────────────────────────────────────────
     "service.installed": "✅ 服务已安装 ({platform}: {name})",
@@ -325,9 +496,9 @@ MESSAGES: dict[str, str] = {
     # ── upgrade CLI ─────────────────────────────────────────────────────
     "upgrade.not_workspace": "❌ 当前目录不是 ChatMD 工作空间，请先运行 `chatmd init`",
     "upgrade.specify_option": "请指定升级选项：",
-    "upgrade.full_option": "  chatmd upgrade --full  — 升级为完整工作空间",
+    "upgrade.full_option": "  chatmd upgrade --full  — 确保 chatmd/ 目录结构完整",
     "upgrade.done": "✅ 升级完成: {items}",
-    "upgrade.already_full": "ℹ️ 工作空间已经是完整模式",
+    "upgrade.already_full": "ℹ️ 工作空间结构已完整",
 
     # ── Default user config aliases ─────────────────────────────────────
     "alias.translate_en": "translate(英文)",

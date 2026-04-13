@@ -30,8 +30,7 @@ def _build_welcome_chat_md() -> str:
     )
 
 _DEFAULT_AGENT_YAML: dict = {
-    "version": "0.1",
-    "workspace": {"mode": "full"},
+    "version": "0.2.3",
     "ai": {
         "providers": [
             {
@@ -50,17 +49,26 @@ _DEFAULT_AGENT_YAML: dict = {
             {"type": "file_save", "debounce_ms": 800},
             {"type": "suffix", "marker": ";", "enabled": False},
         ],
+        "confirm": {
+            "enabled": False,
+            "commands": ["/sync", "/upload", "/new", "/upgrade", "/notify"],
+        },
     },
     "watcher": {
         "debounce_ms": 300,
-        "watch_files": ["chat.md"],
-        "watch_dirs": ["chat/"],
+        "watch_dirs": ["chatmd/"],
         "ignore_patterns": ["_index.md"],
     },
     "commands": {"prefix": "/"},
     "async": {"max_concurrent": 3, "timeout": 60},
-    "sync": {"mode": "git", "auto_commit": True, "interval": 300},
+    "sync": {"mode": "git"},
     "logging": {"level": "INFO", "audit": True},
+    "cron": {"enabled": True, "cron_file": "cron.md"},
+    "notification": {
+        "enabled": True,
+        "notification_file": "notification.md",
+        "system_notify": False,
+    },
 }
 
 _DEFAULT_USER_YAML: dict = {
@@ -88,74 +96,65 @@ __pycache__/
 """
 
 
-def _resolve_mode(workspace: Path, mode: str | None) -> str:
-    """Determine workspace mode — full or assistant."""
-    if mode is not None:
-        return mode
-
-    has_files = any(workspace.iterdir()) if workspace.exists() else False
-    if not has_files:
-        return "full"
-
-    # Interactive prompt when directory has existing files
-    return click.prompt(
-        t("init.mode_prompt"),
-        type=click.Choice(["full", "assistant"]),
-        default="assistant",
-    )
-
-
 def _write_yaml(path: Path, data: dict) -> None:
     """Write a dict to a YAML file with UTF-8 encoding."""
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
-def run_init(path_str: str, *, mode: str | None = None, no_git: bool = False) -> None:
+def run_init(path_str: str, *, no_git: bool = False) -> None:
     """Execute the ``chatmd init`` command."""
     workspace = Path(path_str).resolve()
     workspace.mkdir(parents=True, exist_ok=True)
 
-    resolved_mode = _resolve_mode(workspace, mode)
-
     chatmd_dir = workspace / ".chatmd"
     chatmd_dir.mkdir(exist_ok=True)
 
-    # Always create config
-    agent_config = _DEFAULT_AGENT_YAML.copy()
-    agent_config["workspace"] = {"mode": resolved_mode}
-    if resolved_mode == "assistant":
-        agent_config["watcher"] = {
-            "debounce_ms": 300,
-            "watch_files": [],
-            "watch_dirs": ["."],
-            "ignore_patterns": ["_index.md"],
-        }
-    _write_yaml(chatmd_dir / "agent.yaml", agent_config)
+    # Write config files
+    _write_yaml(chatmd_dir / "agent.yaml", _DEFAULT_AGENT_YAML)
     _write_yaml(chatmd_dir / "user.yaml", _DEFAULT_USER_YAML)
 
-    # Create subdirectories
-    for sub in ("skills", "memory", "logs", "history"):
+    # Create .chatmd subdirectories
+    for sub in ("skills", "memory", "logs", "history", "state"):
         (chatmd_dir / sub).mkdir(exist_ok=True)
 
-    if resolved_mode == "full":
-        # Create chat.md
-        chat_md = workspace / "chat.md"
-        if not chat_md.exists():
-            chat_md.write_text(_build_welcome_chat_md(), encoding="utf-8")
+    # Create interaction directory (chatmd/)
+    interact_root = workspace / "chatmd"
+    interact_root.mkdir(parents=True, exist_ok=True)
 
-        # Create chat/ directory
-        chat_dir = workspace / "chat"
-        chat_dir.mkdir(exist_ok=True)
+    # Create chat.md
+    chat_md = interact_root / "chat.md"
+    if not chat_md.exists():
+        chat_md.write_text(_build_welcome_chat_md(), encoding="utf-8")
+
+    # Create chat/ directory
+    chat_dir = interact_root / "chat"
+    chat_dir.mkdir(exist_ok=True)
+
+    # Create notification.md
+    notif_md = interact_root / "notification.md"
+    if not notif_md.exists():
+        notif_md.write_text(
+            f"# {t('init.notification_title')}\n\n"
+            f"> {t('init.notification_subtitle')}\n\n---\n\n",
+            encoding="utf-8",
+        )
+
+    # Create cron.md with /sync job if git sync is enabled
+    cron_md = interact_root / "cron.md"
+    if not cron_md.exists():
+        cron_md.write_text(
+            "# Cron Tasks\n\n```cron\n@every 5m /sync\n```\n",
+            encoding="utf-8",
+        )
 
     # Git init
     if not no_git:
         _init_git(workspace)
 
-    click.echo(t("init.workspace_created", workspace=workspace, mode=resolved_mode))
+    click.echo(t("init.workspace_created", workspace=workspace))
     click.echo(t("init.run_start"))
-    if resolved_mode == "full":
-        click.echo(t("init.open_chat"))
+    click.echo(t("init.open_chat"))
 
 
 def _init_git(workspace: Path) -> None:

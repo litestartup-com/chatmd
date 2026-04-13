@@ -246,11 +246,15 @@ class TestE2EUtilitySkills:
         skill = router.get_skill("help")
         result = skill.execute("", {}, _ctx(tmp_path))
         assert result.success
-        # Should contain table with new skills
-        assert "/datetime" in result.output
-        assert "/todo" in result.output
-        assert "/week" in result.output
-        assert "/heading" in result.output
+        # Overview mode shows group names
+        assert "Date & Time" in result.output
+        assert "Markdown Templates" in result.output
+        assert "Utilities" in result.output
+        # /help <group> should show individual commands
+        detail = skill.execute("markdown", {}, _ctx(tmp_path))
+        assert detail.success
+        assert "/todo" in detail.output
+        assert "/heading" in detail.output
 
     def test_status(self, tmp_path):
         skill = _make_router().get_skill("status")

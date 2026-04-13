@@ -271,3 +271,93 @@ class TestDaemonMode:
         runner = CliRunner()
         result = runner.invoke(main, ["start", "--help"])
         assert "--daemon" in result.output or "-d" in result.output
+
+
+# ---------------------------------------------------------------------------
+# restart tests
+# ---------------------------------------------------------------------------
+
+
+class TestRestart:
+    """Tests for ``chatmd restart`` (run_restart)."""
+
+    @pytest.fixture()
+    def workspace(self, tmp_path: Path) -> Path:
+        chatmd_dir = tmp_path / ".chatmd"
+        chatmd_dir.mkdir()
+        (chatmd_dir / "agent.yaml").write_text("watcher:\n  debounce_ms: 300\n")
+        (chatmd_dir / "user.yaml").write_text("language: en\n")
+        (tmp_path / "chat.md").write_text("# Chat\n")
+        return tmp_path
+
+    def test_restart_no_running_agent(self, workspace: Path, capsys) -> None:
+        """restart when no agent is running should start a new daemon."""
+        from chatmd.commands.agent_lifecycle import run_restart
+
+        with patch("chatmd.commands.agent_lifecycle.run_start_daemon") as mock_daemon:
+            run_restart(str(workspace))
+
+        captured = capsys.readouterr()
+        assert "No running Agent" in captured.out or "未发现" in captured.out
+        mock_daemon.assert_called_once_with(str(workspace))
+
+    def test_restart_with_running_agent(self, workspace: Path, capsys) -> None:
+        """restart when agent is running should stop then start daemon."""
+        from chatmd.commands.agent_lifecycle import run_restart
+
+        # Simulate a running PID
+        pid_file = workspace / ".chatmd" / "agent.pid"
+        pid_file.write_text("99999", encoding="utf-8")
+
+        with (
+            patch("chatmd.commands.agent_lifecycle._is_process_alive", return_value=False),
+            patch("chatmd.commands.agent_lifecycle.run_start_daemon") as mock_daemon,
+        ):
+            run_restart(str(workspace))
+
+        # PID 99999 is not alive, so it cleans up and starts fresh
+        mock_daemon.assert_called_once_with(str(workspace))
+
+    def test_restart_stops_alive_process(self, workspace: Path, capsys) -> None:
+        """restart should call run_stop when process is alive."""
+        from chatmd.commands.agent_lifecycle import run_restart
+
+        pid_file = workspace / ".chatmd" / "agent.pid"
+        pid_file.write_text("12345", encoding="utf-8")
+
+        call_count = [0]
+
+        def fake_alive(pid: int) -> bool:
+            # First few calls: alive; then dead after stop
+            call_count[0] += 1
+            return call_count[0] <= 2
+
+        with (
+            patch("chatmd.commands.agent_lifecycle._is_process_alive", side_effect=fake_alive),
+            patch("chatmd.commands.agent_lifecycle.run_stop") as mock_stop,
+            patch("chatmd.commands.agent_lifecycle.run_start_daemon") as mock_daemon,
+        ):
+            run_restart(str(workspace))
+
+        mock_stop.assert_called_once_with(str(workspace))
+        mock_daemon.assert_called_once_with(str(workspace))
+        captured = capsys.readouterr()
+        assert "Stopping" in captured.out or "停止" in captured.out
+        assert "Restarting" in captured.out or "重启" in captured.out
+
+    def test_restart_not_workspace(self, tmp_path: Path) -> None:
+        """restart on non-workspace should exit with error."""
+        from chatmd.commands.agent_lifecycle import run_restart
+
+        with pytest.raises(SystemExit):
+            run_restart(str(tmp_path))
+
+    def test_cli_restart_has_workspace_option(self) -> None:
+        """The ``chatmd restart`` CLI command should accept -w."""
+        from click.testing import CliRunner
+
+        from chatmd.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["restart", "--help"])
+        assert "--workspace" in result.output or "-w" in result.output

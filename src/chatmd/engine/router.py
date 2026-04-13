@@ -65,6 +65,23 @@ class Router:
 
         logger.debug("Registered skill '%s' (%s)", name, skill.category)
 
+    def unregister(self, name: str) -> bool:
+        """Remove a skill and its aliases from the router.
+
+        Returns True if the skill was found and removed.
+        """
+        skill = self._routes.pop(name, None)
+        if skill is None:
+            return False
+
+        # Remove aliases that point to this skill
+        dead_aliases = [a for a, t in self._aliases.items() if t == name]
+        for alias in dead_aliases:
+            del self._aliases[alias]
+
+        logger.debug("Unregistered skill '%s' (removed %d aliases)", name, len(dead_aliases))
+        return True
+
     def register_aliases(self, aliases: dict[str, str]) -> None:
         """Register user-defined aliases from config (highest priority)."""
         for alias, target in aliases.items():

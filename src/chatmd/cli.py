@@ -40,18 +40,12 @@ def main() -> None:
 
 @main.command()
 @click.argument("path", type=click.Path())
-@click.option(
-    "--mode",
-    type=click.Choice(["full", "assistant"]),
-    default=None,
-    help="Workspace mode: full (default for new dirs) or assistant (inject only).",
-)
 @click.option("--no-git", is_flag=True, default=False, help="Skip Git initialization.")
-def init(path: str, mode: str | None, no_git: bool) -> None:
+def init(path: str, no_git: bool) -> None:
     """Initialize a ChatMD workspace at PATH."""
     from chatmd.commands.init_workspace import run_init
 
-    run_init(path, mode=mode, no_git=no_git)
+    run_init(path, no_git=no_git)
 
 
 @main.command()
@@ -110,13 +104,34 @@ def status(workspace: str) -> None:
 
 
 @main.command()
-@click.argument("path", type=click.Path(exists=True), default=".")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+def restart(workspace: str) -> None:
+    """Restart the ChatMD Agent (stop + start daemon)."""
+    from chatmd.commands.agent_lifecycle import run_restart
+
+    run_restart(workspace)
+
+
+@main.command()
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
 @click.option("--full", is_flag=True, default=False, help="Upgrade to full workspace mode.")
-def upgrade(path: str, full: bool) -> None:
+def upgrade(workspace: str, full: bool) -> None:
     """Upgrade an existing ChatMD workspace."""
     from chatmd.commands.upgrade import run_upgrade
 
-    run_upgrade(path, full=full)
+    run_upgrade(workspace, full=full)
 
 
 @main.command()

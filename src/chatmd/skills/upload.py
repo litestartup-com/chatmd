@@ -31,7 +31,7 @@ _HTML_IMG_RE = re.compile(
 
 # Default upload config
 _DEFAULT_MAX_SIZE_MB = 10
-_DEFAULT_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"}
+_DEFAULT_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp", "svg", "ico"}
 _MAX_RETRIES = 2
 
 
@@ -114,6 +114,11 @@ class UploadSkill(Skill):
     requires_network = True
     is_async = True
     aliases = ["up"]
+
+    @property
+    def help_text(self) -> str:
+        """Rich help text for /help upload."""
+        return t("skill.upload.help_text")
 
     def __init__(
         self,

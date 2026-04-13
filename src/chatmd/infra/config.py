@@ -11,25 +11,29 @@ import yaml
 from chatmd.exceptions import ConfigError
 from chatmd.i18n import set_locale
 
+_INTERACTION_DIR = "chatmd"
+
 _DEFAULT_AGENT_CONFIG: dict[str, Any] = {
     "version": "0.1",
-    "workspace": {"mode": "full"},
     "ai": {"providers": []},
     "trigger": {
         "signals": [
             {"type": "file_save", "debounce_ms": 800},
             {"type": "suffix", "marker": ";", "enabled": False},
         ],
+        "confirm": {
+            "enabled": False,
+            "commands": ["/sync", "/upload", "/new", "/upgrade", "/notify"],
+        },
     },
     "watcher": {
         "debounce_ms": 300,
-        "watch_files": ["chat.md"],
-        "watch_dirs": ["chat/"],
+        "watch_dirs": ["chatmd/"],
         "ignore_patterns": ["_index.md"],
     },
     "commands": {"prefix": "/"},
     "async": {"max_concurrent": 3, "timeout": 60},
-    "sync": {"mode": "git", "auto_commit": True, "interval": 300},
+    "sync": {"mode": "git"},
     "logging": {"level": "INFO", "audit": True},
 }
 
@@ -116,9 +120,28 @@ class Config:
         return self._user.get("aliases", {})
 
     @property
-    def workspace_mode(self) -> str:
-        """Return workspace mode (full or assistant)."""
-        return self._agent.get("workspace", {}).get("mode", "full")
+    def interaction_dir(self) -> str:
+        """Return the interaction directory name (hardcoded 'chatmd')."""
+        return _INTERACTION_DIR
+
+    def interaction_path(self, relative: str) -> Path:
+        """Resolve a file path relative to the interaction directory.
+
+        Example::
+
+            cfg.interaction_path("chat.md")  →  workspace / chatmd / chat.md
+        """
+        return self.workspace / _INTERACTION_DIR / relative
+
+    def resolve_watch_paths(self) -> list[str]:
+        """Return watch_dirs with 'chatmd/' always included."""
+        watcher_cfg = self._agent.get("watcher", {})
+        dirs = list(watcher_cfg.get("watch_dirs", ["chatmd/"]))
+        # Ensure chatmd/ is always monitored
+        idir_entry = _INTERACTION_DIR + "/"
+        if idir_entry not in dirs:
+            dirs.insert(0, idir_entry)
+        return dirs
 
     def get_trigger_mode(self) -> str:
         """Return the current trigger mode: 'suffix' or 'save'."""

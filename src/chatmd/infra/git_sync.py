@@ -1,10 +1,13 @@
-"""Git sync — automatic and manual Git synchronization."""
+"""Git sync — manual Git synchronization.
+
+Automatic periodic sync is handled by cron (``@every 5m /sync`` in cron.md).
+This module only provides the ``sync_now()`` operation used by ``/sync``.
+"""
 
 from __future__ import annotations
 
 import logging
 import subprocess
-import threading
 from pathlib import Path
 
 from chatmd.i18n import t
@@ -13,39 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 class GitSync:
-    """Handles Git auto-commit and sync operations."""
+    """Handles Git sync operations for ``/sync`` command and cron."""
 
-    def __init__(
-        self,
-        workspace: Path,
-        auto_commit: bool = True,
-        interval: int = 300,
-    ) -> None:
+    def __init__(self, workspace: Path) -> None:
         self._workspace = workspace
-        self._auto_commit = auto_commit
-        self._interval = interval
-        self._timer: threading.Timer | None = None
-        self._running = False
-
-    def start(self) -> None:
-        """Start the periodic auto-sync timer."""
-        if not self._auto_commit:
-            logger.info("Git auto-sync disabled")
-            return
-        if not self._is_git_repo():
-            logger.info("Not a git repository, skipping auto-sync")
-            return
-        self._running = True
-        self._schedule_next()
-        logger.info("Git auto-sync started (interval=%ds)", self._interval)
-
-    def stop(self) -> None:
-        """Stop the auto-sync timer."""
-        self._running = False
-        if self._timer:
-            self._timer.cancel()
-            self._timer = None
-        logger.info("Git auto-sync stopped")
 
     def sync_now(self) -> tuple[bool, str]:
         """Perform an immediate git add + commit + pull + push cycle.
@@ -82,24 +56,6 @@ class GitSync:
             return False, t("output.sync.git_failed", error=exc)
         except FileNotFoundError:
             return False, t("output.sync.git_not_installed")
-
-    def _schedule_next(self) -> None:
-        """Schedule the next auto-sync."""
-        if not self._running:
-            return
-        self._timer = threading.Timer(self._interval, self._auto_sync)
-        self._timer.daemon = True
-        self._timer.start()
-
-    def _auto_sync(self) -> None:
-        """Perform auto-sync and reschedule."""
-        if not self._running:
-            return
-        logger.debug("Auto-sync triggered")
-        success, msg = self.sync_now()
-        if not success:
-            logger.warning("Auto-sync failed: %s", msg)
-        self._schedule_next()
 
     def _is_git_repo(self) -> bool:
         """Check if the workspace is a Git repository."""

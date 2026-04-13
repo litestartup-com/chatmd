@@ -33,7 +33,6 @@ def workspace(tmp_path: Path) -> Path:
 
     agent_yaml = {
         "version": "0.1",
-        "workspace": {"mode": "full"},
         "ai": {"providers": []},
         "trigger": {
             "signals": [{"type": "file_save", "debounce_ms": 800}],
@@ -41,8 +40,7 @@ def workspace(tmp_path: Path) -> Path:
         },
         "watcher": {
             "debounce_ms": 300,
-            "watch_files": ["chat.md"],
-            "watch_dirs": ["chat/"],
+            "watch_dirs": ["chatmd/"],
             "ignore_patterns": ["_index.md"],
         },
         "commands": {"prefix": "/", "natural_language": {"enabled": True}},
@@ -217,7 +215,7 @@ class TestREADMECommandsExecutable:
 
 
 class TestHelpListsAllREADMECommands:
-    """/help output must include every command from README."""
+    """/help <cmd> must find every command from README."""
 
     _EXPECTED_IN_HELP = ["help", "date", "time", "now", "ask", "translate",
                          "status", "list", "sync", "log"]
@@ -229,12 +227,18 @@ class TestHelpListsAllREADMECommands:
         ctx = SkillContext(
             source_file=None, source_line=1, workspace=agent.workspace,
         )
+        # Overview should succeed and show groups
         result = skill.execute(resolved.input_text, resolved.args, ctx)
         assert result.success
 
+        # Each command must be reachable via /help <cmd>
         for cmd in self._EXPECTED_IN_HELP:
-            assert f"/{cmd}" in result.output, (
-                f"/help output missing /{cmd}. Output:\n{result.output}"
+            detail = skill.execute(cmd, resolved.args, ctx)
+            assert detail.success, (
+                f"/help {cmd} failed. Error: {detail.error}"
+            )
+            assert f"/{cmd}" in detail.output, (
+                f"/help {cmd} output missing /{cmd}. Output:\n{detail.output}"
             )
 
 
@@ -269,8 +273,13 @@ class TestCustomSkillDescriptionInHelp:
         ctx = SkillContext(source_file=None, source_line=1, workspace=ws)
         result = skill.execute(resolved.input_text, resolved.args, ctx)
         assert result.success
-        assert "Say hello" in result.output
-        assert "skill.greet.description" not in result.output
+        # Overview shows group with /greet
+        assert "/greet" in result.output
+        # /help greet should show description
+        detail = skill.execute("greet", resolved.args, ctx)
+        assert detail.success
+        assert "Say hello" in detail.output
+        assert "skill.greet.description" not in detail.output
 
     def test_python_skill_description_in_help(self, tmp_path: Path):
         ws = self._make_workspace(tmp_path)
@@ -291,8 +300,12 @@ class TestCustomSkillDescriptionInHelp:
         ctx = SkillContext(source_file=None, source_line=1, workspace=ws)
         result = skill.execute(resolved.input_text, resolved.args, ctx)
         assert result.success
-        assert "Echo back input" in result.output
-        assert "skill.echo.description" not in result.output
+        assert "/echo" in result.output
+        # /help echo should show description
+        detail = skill.execute("echo", resolved.args, ctx)
+        assert detail.success
+        assert "Echo back input" in detail.output
+        assert "skill.echo.description" not in detail.output
 
 
 class TestCustomSkillLoading:
@@ -308,7 +321,6 @@ class TestCustomSkillLoading:
 
         agent_yaml = {
             "version": "0.1",
-            "workspace": {"mode": "full"},
             "ai": {"providers": []},
         }
         user_yaml = {"language": "en", "aliases": {}}

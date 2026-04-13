@@ -1,10 +1,11 @@
 """LiteStartup unified provider — single API key, multiple endpoints.
 
 Centralizes authentication and endpoint routing for all LiteStartup services:
-- AI chat:  POST /client/v2/ai/chat
-- Upload:   POST /client/v2/upload
-- Publish:  POST /client/v2/publish
-- (future)  notify, subscribe, etc.
+- AI chat:       POST /client/v2/ai/chat
+- Upload:        POST /client/v2/storage/upload
+- Publish:       POST /client/v2/publish
+- Email:         POST /client/v2/emails
+- (future)       subscribe, etc.
 
 Backward compatible with the old ``ai.providers[].api_url`` config format.
 """
@@ -26,8 +27,9 @@ _DEFAULT_TIMEOUT = 60
 # Default endpoint paths (relative to api_base)
 _DEFAULT_ENDPOINTS: dict[str, str] = {
     "chat": "/client/v2/ai/chat",
-    "upload": "/client/v2/upload",
+    "upload": "/client/v2/storage/upload",
     "publish": "/client/v2/publish",
+    "email": "/client/v2/emails",
 }
 
 
@@ -121,9 +123,82 @@ class LiteStartupProvider:
         except httpx.RequestError as exc:
             return {"success": False, "error": f"Network error: {exc}"}
 
-        if data.get("success") and data.get("url"):
-            return {"success": True, "url": data["url"]}
+        # LiteStartup Storage API returns {code, message, data: {publicUrl, ...}}
+        status_code = data.get("code", resp.status_code)
+        inner = data.get("data", {}) or {}
+        public_url = inner.get("publicUrl", "")
+
+        if status_code in (200, 201) and public_url:
+            return {"success": True, "url": public_url}
         return {"success": False, "error": data.get("message", "Unknown upload error")}
+
+    # -- Email ----------------------------------------------------------------
+
+    def send_email(
+        self,
+        *,
+        subject: str,
+        html: str,
+        from_addr: str | None = None,
+        from_name: str | None = None,
+        to_addr: str | None = None,
+        to_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Send an email via LiteStartup Email API.
+
+        Uses the general ``/client/v2/emails`` endpoint.
+
+        Returns ``{"success": True, "message_id": "..."}`` on success,
+        or ``{"success": False, "error": "..."}`` on failure.
+        """
+        url = self.endpoint("email")
+        payload: dict[str, str] = {
+            "subject": subject,
+            "html": html,
+        }
+        if from_addr:
+            payload["from"] = from_addr
+        if from_name:
+            payload["from_name"] = from_name
+        if to_addr:
+            payload["to"] = to_addr
+        if to_name:
+            payload["to_name"] = to_name
+
+        logger.debug("Sending email: %s", subject)
+
+        try:
+            resp = httpx.post(
+                url,
+                json=payload,
+                headers=self.auth_headers(),
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.TimeoutException:
+            return {"success": False, "error": f"Email timeout ({self._timeout}s)"}
+        except httpx.HTTPStatusError as exc:
+            body = ""
+            try:
+                body = exc.response.json().get("message", "")
+            except Exception:
+                pass
+            msg = f"HTTP {exc.response.status_code}"
+            if body:
+                msg += f": {body}"
+            return {"success": False, "error": msg}
+        except httpx.RequestError as exc:
+            return {"success": False, "error": f"Network error: {exc}"}
+
+        status_code = data.get("code", resp.status_code)
+        if status_code == 200:
+            message_id = (data.get("data") or {}).get("messageId", "")
+            return {"success": True, "message_id": message_id}
+        return {
+            "success": False,
+            "error": data.get("message", "Unknown email error"),
+        }
 
     # -- Publish -------------------------------------------------------------
 

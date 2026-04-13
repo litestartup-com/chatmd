@@ -21,7 +21,6 @@ def workspace_with_config(workspace):
     """Create workspace with agent.yaml and user.yaml."""
     agent_cfg = {
         "version": "0.1",
-        "workspace": {"mode": "full"},
         "logging": {"level": "DEBUG"},
     }
     user_cfg = {
@@ -40,14 +39,14 @@ class TestConfigLoading:
 
     def test_defaults_when_no_files(self, workspace):
         config = Config(workspace)
-        assert config.workspace_mode == "full"
+        assert config.interaction_dir == "chatmd"
         assert config.get("logging.level") == "INFO"
         assert config.get("watcher.debounce_ms") == 300
 
     def test_override_from_agent_yaml(self, workspace_with_config):
         config = Config(workspace_with_config)
         assert config.get("logging.level") == "DEBUG"
-        assert config.workspace_mode == "full"
+        assert config.interaction_dir == "chatmd"
 
     def test_user_aliases(self, workspace_with_config):
         config = Config(workspace_with_config)

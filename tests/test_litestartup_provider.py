@@ -47,7 +47,7 @@ class TestEndpointUrl:
 
     def test_upload_endpoint(self):
         p = LiteStartupProvider("https://api.litestartup.com", "k")
-        assert p.endpoint("upload") == "https://api.litestartup.com/client/v2/upload"
+        assert p.endpoint("upload") == "https://api.litestartup.com/client/v2/storage/upload"
 
     def test_publish_endpoint(self):
         p = LiteStartupProvider("https://api.litestartup.com", "k")
@@ -80,10 +80,11 @@ class TestUpload:
     @patch("chatmd.providers.litestartup.httpx.post")
     def test_upload_success(self, mock_post):
         mock_resp = MagicMock()
-        mock_resp.status_code = 200
+        mock_resp.status_code = 201
         mock_resp.json.return_value = {
-            "success": True,
-            "url": "https://cdn.litestartup.com/img/abc.png",
+            "code": 201,
+            "message": "File uploaded successfully",
+            "data": {"publicUrl": "https://cdn.litestartup.com/img/abc.png"},
         }
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
@@ -103,10 +104,11 @@ class TestUpload:
     @patch("chatmd.providers.litestartup.httpx.post")
     def test_upload_api_error(self, mock_post):
         mock_resp = MagicMock()
-        mock_resp.status_code = 200
+        mock_resp.status_code = 400
         mock_resp.json.return_value = {
-            "success": False,
+            "code": 400,
             "message": "File too large",
+            "data": {},
         }
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
@@ -270,7 +272,7 @@ class TestCreateFromConfig:
         p = create_litestartup_provider(cfg)
         assert p.endpoint("chat") == "https://api.litestartup.com/v3/ai/chat"
         # Other endpoints use defaults
-        assert p.endpoint("upload") == "https://api.litestartup.com/client/v2/upload"
+        assert p.endpoint("upload") == "https://api.litestartup.com/client/v2/storage/upload"
 
     def test_minimal_config(self):
         cfg = {"api_key": "sk-min"}

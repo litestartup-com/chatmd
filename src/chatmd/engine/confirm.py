@@ -1,18 +1,18 @@
-"""Confirmation window — delay-based confirmation for commands in Markdown files.
+"""Confirmation window — explicit user confirmation for commands in Markdown files.
 
 The confirmation flow:
-1. Agent detects a command and writes a confirmation prompt line.
-2. A timer starts (default 1.5s).
-3. If the user **deletes** the confirmation line before the timer fires → cancel.
-4. If the timer fires and the line still exists → execute.
-5. Commands in the ``skip`` list bypass confirmation entirely.
+1. Agent detects a command that is in the ``commands`` list.
+2. Instead of executing, Agent writes a confirmation prompt to the file.
+3. The command stays pending until the user explicitly types ``/confirm``.
+4. If the user **deletes** the confirmation line → cancel.
+5. Commands NOT in the ``commands`` list execute immediately (no confirmation).
 """
 
 from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -30,40 +30,53 @@ class PendingConfirmation:
     source_file: Path
     source_line: int
     callback: Any  # Callable to execute if confirmed
-    timer: threading.Timer | None = None
+    args: dict = field(default_factory=dict)
 
 
 class ConfirmationWindow:
-    """Manages delay-based confirmation for potentially dangerous commands.
+    """Manages explicit user confirmation for commands.
 
     When a command requires confirmation:
     1. A confirmation marker is written to the file.
-    2. After ``delay`` seconds, if the marker still exists → execute.
+    2. The user must type ``/confirm`` to execute the command.
     3. If the user removes the marker line → cancel.
+    4. No timer — commands never auto-execute.
     """
 
     def __init__(
         self,
-        delay: float = 1.5,
-        skip_commands: list[str] | None = None,
+        enabled: bool = False,
+        commands: list[str] | None = None,
     ) -> None:
-        self._delay = delay
-        self._skip_commands: set[str] = set(skip_commands or [])
+        self._enabled = enabled
+        self._commands: set[str] = set(commands or [])
         self._pending: dict[str, PendingConfirmation] = {}
         self._lock = threading.Lock()
         self._counter = 0
 
     @property
-    def delay(self) -> float:
-        return self._delay
+    def enabled(self) -> bool:
+        """Whether confirmation is enabled."""
+        return self._enabled
 
-    @delay.setter
-    def delay(self, value: float) -> None:
-        self._delay = max(0.0, value)
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        self._enabled = value
+
+    @property
+    def commands(self) -> set[str]:
+        """Set of command names that require confirmation."""
+        return self._commands
 
     def needs_confirmation(self, command_name: str) -> bool:
-        """Check if a command requires confirmation (i.e. not in skip list)."""
-        return command_name not in self._skip_commands
+        """Check if a command requires confirmation.
+
+        Returns ``True`` only if confirmation is enabled AND the command
+        is in the ``commands`` list.
+        """
+        if not self._enabled:
+            return False
+        return command_name in self._commands
 
     def request_confirmation(
         self,
@@ -71,8 +84,9 @@ class ConfirmationWindow:
         source_file: Path,
         source_line: int,
         callback: Any,
+        args: dict | None = None,
     ) -> PendingConfirmation:
-        """Create a pending confirmation with a delay timer.
+        """Create a pending confirmation (no timer — waits for /confirm).
 
         Returns the ``PendingConfirmation`` so the caller can write
         a confirmation marker to the file.
@@ -87,18 +101,41 @@ class ConfirmationWindow:
             source_file=source_file,
             source_line=source_line,
             callback=callback,
+            args=args or {},
         )
-
-        timer = threading.Timer(self._delay, self._on_timer, args=[confirm_id])
-        pending.timer = timer
 
         with self._lock:
             self._pending[confirm_id] = pending
 
-        timer.start()
-        logger.debug(
-            "Confirmation requested: %s (%.1fs delay)", confirm_id, self._delay,
-        )
+        logger.debug("Confirmation requested: %s for %s", confirm_id, command_text)
+        return pending
+
+    def confirm(self, confirm_id: str | None = None) -> PendingConfirmation | None:
+        """Execute a pending confirmation.
+
+        If *confirm_id* is ``None``, confirm the most recent pending command.
+        Returns the confirmed ``PendingConfirmation``, or ``None`` if not found.
+        """
+        with self._lock:
+            if confirm_id:
+                pending = self._pending.pop(confirm_id, None)
+            elif self._pending:
+                # Confirm the most recent (last added)
+                confirm_id = list(self._pending.keys())[-1]
+                pending = self._pending.pop(confirm_id)
+            else:
+                pending = None
+
+        if pending is None:
+            return None
+
+        logger.info("Confirmation confirmed by user: %s", pending.confirm_id)
+        try:
+            pending.callback()
+        except Exception:
+            logger.exception(
+                "Error executing confirmed command: %s", pending.confirm_id,
+            )
         return pending
 
     def cancel(self, confirm_id: str) -> bool:
@@ -112,9 +149,6 @@ class ConfirmationWindow:
         if pending is None:
             return False
 
-        if pending.timer:
-            pending.timer.cancel()
-
         logger.info("Confirmation cancelled: %s", confirm_id)
         return True
 
@@ -123,10 +157,6 @@ class ConfirmationWindow:
         with self._lock:
             items = list(self._pending.values())
             self._pending.clear()
-
-        for p in items:
-            if p.timer:
-                p.timer.cancel()
 
         return len(items)
 
@@ -140,25 +170,10 @@ class ConfirmationWindow:
         with self._lock:
             return list(self._pending.values())
 
-    def _on_timer(self, confirm_id: str) -> None:
-        """Timer callback — execute the command if still pending."""
-        with self._lock:
-            pending = self._pending.pop(confirm_id, None)
-
-        if pending is None:
-            return  # Already cancelled
-
-        logger.info("Confirmation confirmed (timer expired): %s", confirm_id)
-        try:
-            pending.callback()
-        except Exception:
-            logger.exception("Error executing confirmed command: %s", confirm_id)
-
     def confirmation_marker(self, confirm_id: str, command_text: str) -> str:
         """Generate the Markdown confirmation marker line."""
         return t(
             "confirm.prompt",
             command=command_text,
-            delay=self._delay,
             confirm_id=confirm_id,
         )

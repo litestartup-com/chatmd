@@ -59,45 +59,88 @@ class TestHelpSkill:
         result = skill.execute("", {}, _make_context(tmp_path))
         assert not result.success
 
-    def test_grouped_output_has_section_headers(self, tmp_path):
+    def test_grouped_output_has_overview_table(self, tmp_path):
         router = Router()
         register_builtin_skills(router)
         help_skill = router.get_skill("help")
         result = help_skill.execute("", {}, _make_context(tmp_path))
         assert result.success
-        # Should have group headers (en default)
-        assert "### Date & Time" in result.output
-        assert "### Markdown Templates" in result.output
-        assert "### Utilities" in result.output
+        # Overview mode: group names in table rows
+        assert "Date & Time" in result.output
+        assert "Markdown Templates" in result.output
+        assert "Utilities" in result.output
+        assert "/help dt" in result.output
 
-    def test_datetime_skills_in_datetime_group(self, tmp_path):
+    def test_help_group_detail(self, tmp_path):
+        router = Router()
+        register_builtin_skills(router)
+        help_skill = router.get_skill("help")
+        result = help_skill.execute("datetime", {}, _make_context(tmp_path))
+        assert result.success
+        # Group detail shows individual commands
+        assert "`/date`" in result.output
+        assert "`/time`" in result.output
+
+    def test_help_cmd_detail(self, tmp_path):
+        router = Router()
+        register_builtin_skills(router)
+        help_skill = router.get_skill("help")
+        result = help_skill.execute("date", {}, _make_context(tmp_path))
+        assert result.success
+        assert "## /date" in result.output
+        assert "Description" in result.output
+
+    def test_help_cmd_not_found(self, tmp_path):
+        router = Router()
+        register_builtin_skills(router)
+        help_skill = router.get_skill("help")
+        result = help_skill.execute("nonexistent", {}, _make_context(tmp_path))
+        assert not result.success
+
+    def test_help_group_empty(self, tmp_path):
+        router = Router()
+        register_builtin_skills(router)
+        help_skill = router.get_skill("help")
+        # AI group has no skills registered by default
+        result = help_skill.execute("ai", {}, _make_context(tmp_path))
+        assert result.success
+
+    def test_help_group_alias_dt(self, tmp_path):
+        """Short alias 'dt' should expand to datetime group."""
+        router = Router()
+        register_builtin_skills(router)
+        help_skill = router.get_skill("help")
+        result = help_skill.execute("dt", {}, _make_context(tmp_path))
+        assert result.success
+        assert "`/date`" in result.output
+        assert "`/time`" in result.output
+
+    def test_help_group_alias_u(self, tmp_path):
+        """Short alias 'u' should expand to utility group."""
+        router = Router()
+        register_builtin_skills(router)
+        help_skill = router.get_skill("help")
+        result = help_skill.execute("u", {}, _make_context(tmp_path))
+        assert result.success
+        assert "`/help`" in result.output
+
+    def test_help_group_alias_md(self, tmp_path):
+        """Short alias 'md' should expand to markdown group."""
+        router = Router()
+        register_builtin_skills(router)
+        help_skill = router.get_skill("help")
+        result = help_skill.execute("md", {}, _make_context(tmp_path))
+        assert result.success
+
+    def test_overview_shows_aliases(self, tmp_path):
+        """Overview table should display short aliases in parentheses."""
         router = Router()
         register_builtin_skills(router)
         help_skill = router.get_skill("help")
         result = help_skill.execute("", {}, _make_context(tmp_path))
-        output = result.output
-        # /date should appear after "Date & Time" header
-        dt_pos = output.index("Date & Time")
-        date_pos = output.index("`/date`")
-        assert date_pos > dt_pos
-
-    def test_utility_skills_in_utility_group(self, tmp_path):
-        router = Router()
-        register_builtin_skills(router)
-        help_skill = router.get_skill("help")
-        result = help_skill.execute("", {}, _make_context(tmp_path))
-        output = result.output
-        util_pos = output.index("Utilities")
-        help_pos = output.index("`/help`")
-        assert help_pos > util_pos
-
-    def test_ai_group_not_shown_when_no_ai_skills(self, tmp_path):
-        router = Router()
-        register_builtin_skills(router)
-        help_skill = router.get_skill("help")
-        result = help_skill.execute("", {}, _make_context(tmp_path))
-        # No AI skills registered, so AI section should not appear
-        assert "### AI" not in result.output
+        assert result.success
+        assert "(`dt`)" in result.output
+        assert "(`u`)" in result.output
 
     def test_classify_method(self):
         assert HelpSkill._classify(DateSkill()) == "datetime"

@@ -13,7 +13,10 @@ from chatmd.skills.infra import NewSessionSkill
 
 
 def _ctx(tmp_path: Path) -> SkillContext:
-    return SkillContext(source_file=tmp_path / "chat.md", source_line=1, workspace=tmp_path)
+    return SkillContext(
+        source_file=tmp_path / "chat.md", source_line=1,
+        workspace=tmp_path, interaction_root=tmp_path,
+    )
 
 
 def _setup_workspace(tmp_path: Path, content: str = "") -> Path:
@@ -194,6 +197,27 @@ class TestNewSessionEdgeCases:
         skill = NewSessionSkill(index_manager=None)
         result = skill.execute("", {}, _ctx(tmp_path))
         assert result.success
+
+    def test_new_from_chat_subdir_no_recursive_chat(self, tmp_path):
+        """Regression: /new triggered from chat/xxx.md must NOT create chat/chat/."""
+        _setup_workspace(tmp_path)
+        chat_dir = tmp_path / "chat"
+        chat_dir.mkdir()
+        sub_file = chat_dir / "session.md"
+        sub_file.write_text("/new", encoding="utf-8")
+
+        # source_file is inside chat/, but interaction_root is tmp_path
+        ctx = SkillContext(
+            source_file=sub_file, source_line=1,
+            workspace=tmp_path, interaction_root=tmp_path,
+        )
+        skill = NewSessionSkill()
+        result = skill.execute("", {}, ctx)
+        assert result.success
+
+        # chat/ should exist but chat/chat/ must NOT
+        assert chat_dir.is_dir()
+        assert not (chat_dir / "chat").exists()
 
 
 class TestExtractBody:

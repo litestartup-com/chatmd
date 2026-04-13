@@ -61,13 +61,6 @@ class TestGitSync:
         assert success
         assert "sync completed" in msg
 
-    def test_start_stop(self, tmp_path):
-        gs = GitSync(tmp_path, auto_commit=False)
-        gs.start()  # Should be a no-op since auto_commit is False
-        gs.stop()
-
-    def test_start_stop_with_git(self, tmp_path):
-        subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True, check=True)
-        gs = GitSync(tmp_path, auto_commit=True, interval=3600)
-        gs.start()
-        gs.stop()
+    def test_constructor_simple(self, tmp_path):
+        gs = GitSync(tmp_path)
+        assert gs._workspace == tmp_path

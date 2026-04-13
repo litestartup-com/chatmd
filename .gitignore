@@ -18,6 +18,9 @@ build/
 # .chatmd/queue.json
 # .chatmd/logs/
 
+# Secrets
+.env
+
 # OS
 .DS_Store
 Thumbs.db

@@ -355,10 +355,19 @@ class HelpSkill(Skill):
     _MARKDOWN_SKILLS = frozenset({
         "todo", "done", "table", "code", "link", "img", "hr", "heading", "quote",
     })
+    _CRON_SKILLS = frozenset({"cron"})
     _UTILITY_SKILLS = frozenset({
-        "help", "status", "list", "sync", "log", "new", "upload",
+        "help", "status", "list", "sync", "log", "new", "upload", "confirm",
     })
-    _GROUP_ORDER = ("datetime", "ai", "markdown", "utility", "custom")
+    _GROUP_ORDER = ("datetime", "ai", "cron", "markdown", "utility", "custom")
+    _GROUP_ALIASES: dict[str, str] = {
+        "dt": "datetime",
+        "ai": "ai",
+        "cr": "cron",
+        "md": "markdown",
+        "u": "utility",
+        "x": "custom",
+    }
 
     def execute(self, input_text: str, args: dict, context: SkillContext) -> SkillResult:
         if self._router is None:
@@ -368,31 +377,119 @@ class HelpSkill(Skill):
         if not skills:
             return SkillResult(success=True, output=t("output.help.empty"))
 
+        topic = input_text.strip().lower()
+        # Resolve group alias (e.g. "dt" → "datetime")
+        resolved = self._GROUP_ALIASES.get(topic, topic)
+
         # Classify skills into groups
         groups: dict[str, list[Skill]] = {g: [] for g in self._GROUP_ORDER}
         for s in skills:
             groups[self._classify(s)].append(s)
 
+        # /help <cmd> — single command detail (also for group-named skills
+        # like "cron" that have rich help_text)
+        if resolved and resolved not in self._GROUP_ORDER:
+            return self._cmd_detail(resolved, skills)
+
+        # If the resolved topic is a group AND a skill name with help_text,
+        # show the rich command help instead of the group table.
+        if resolved and resolved in self._GROUP_ORDER:
+            for s in skills:
+                if s.name == resolved and getattr(s, "help_text", None):
+                    return self._cmd_detail(resolved, skills)
+            return self._group_detail(resolved, groups.get(resolved, []))
+
+        # /help — group overview
+        return self._overview(groups)
+
+    def _overview(self, groups: dict[str, list[Skill]]) -> SkillResult:
+        """Show group overview — one line per group."""
+        # Build reverse alias lookup: group_key → short alias
+        alias_of = {v: k for k, v in self._GROUP_ALIASES.items()}
         lines = [t("output.help.header")]
-        for group_key in self._GROUP_ORDER:
-            group_skills = groups[group_key]
+        lines.append("| Group | Commands | Examples |")
+        lines.append("|------|------|------|")
+        for gk in self._GROUP_ORDER:
+            group_skills = groups[gk]
             if not group_skills:
                 continue
-            group_title = t(f"output.help.group.{group_key}")
-            lines.append(f"### {group_title}\n")
-            lines.append(t("output.help.table_header"))
-            lines.append("|------|------|------|")
-            for s in sorted(group_skills, key=lambda x: x.name):
-                aliases_str = ", ".join(f"`/{a}`" for a in getattr(s, "aliases", []))
-                i18n_key = f"skill.{s.name}.description"
-                desc = t(i18n_key)
-                # Fallback to skill's own description if i18n key is missing
-                if desc == i18n_key:
-                    desc = getattr(s, "description", "") or s.name
-                lines.append(f"| `/{s.name}` | {aliases_str} | {desc} |")
-            lines.append("")
-
+            title = t(f"output.help.group.{gk}")
+            short = alias_of.get(gk, gk)
+            names = ", ".join(
+                f"`/{s.name}`"
+                for s in sorted(group_skills, key=lambda x: x.name)[:4]
+            )
+            suffix = " ..." if len(group_skills) > 4 else ""
+            lines.append(
+                f"| {title} (`{short}`) | {len(group_skills)} |"
+                f" {names}{suffix} |",
+            )
+        lines.append("")
+        lines.append(t("output.help.overview_hint"))
         return SkillResult(success=True, output="\n".join(lines))
+
+    def _group_detail(
+        self, group_key: str, group_skills: list[Skill],
+    ) -> SkillResult:
+        """Show all commands in a single group."""
+        if not group_skills:
+            return SkillResult(
+                success=True, output=t("output.help.group_empty"),
+            )
+        group_title = t(f"output.help.group.{group_key}")
+        lines = [f"## {group_title}\n"]
+        lines.append(t("output.help.table_header"))
+        lines.append("|------|------|------|")
+        for s in sorted(group_skills, key=lambda x: x.name):
+            aliases_str = ", ".join(
+                f"`/{a}`" for a in getattr(s, "aliases", [])
+            )
+            desc = self._get_desc(s)
+            lines.append(f"| `/{s.name}` | {aliases_str} | {desc} |")
+        lines.append("")
+        return SkillResult(success=True, output="\n".join(lines))
+
+    def _cmd_detail(
+        self, cmd_name: str, skills: list[Skill],
+    ) -> SkillResult:
+        """Show detail for a single command."""
+        found = None
+        for s in skills:
+            if s.name == cmd_name:
+                found = s
+                break
+            if cmd_name in getattr(s, "aliases", []):
+                found = s
+                break
+        if not found:
+            return SkillResult(
+                success=False, output="",
+                error=t("output.help.cmd_not_found", cmd=cmd_name),
+            )
+        desc = self._get_desc(found)
+        aliases = getattr(found, "aliases", [])
+        aliases_str = ", ".join(f"`/{a}`" for a in aliases) if aliases else "-"
+        lines = [
+            f"## /{found.name}\n",
+            f"**Description:** {desc}",
+            f"**Aliases:** {aliases_str}",
+            f"**Category:** {getattr(found, 'category', 'custom')}",
+        ]
+        # Rich help text (e.g. subcommand table for /cron)
+        rich = getattr(found, "help_text", None)
+        if rich:
+            lines.append("")
+            lines.append(rich)
+        return SkillResult(success=True, output="\n".join(lines))
+
+    @staticmethod
+    def _get_desc(skill: Skill) -> str:
+        """Get i18n description for a skill."""
+        i18n_key = f"skill.{skill.name}.description"
+        desc = t(i18n_key)
+        if desc == i18n_key:
+            desc = getattr(skill, "description", "") or skill.name
+        return desc
 
     @classmethod
     def _classify(cls, skill: Skill) -> str:
@@ -401,6 +498,8 @@ class HelpSkill(Skill):
             return "datetime"
         if getattr(skill, "category", "") == "ai":
             return "ai"
+        if skill.name in cls._CRON_SKILLS:
+            return "cron"
         if skill.name in cls._MARKDOWN_SKILLS:
             return "markdown"
         if skill.name in cls._UTILITY_SKILLS:
@@ -453,16 +552,16 @@ class ListSkill(Skill):
     aliases = ["ls"]
 
     def execute(self, input_text: str, args: dict, context: SkillContext) -> SkillResult:
-        workspace = context.workspace
         sessions: list[str] = []
 
-        # Default chat.md
-        chat_md = workspace / "chat.md"
+        # Resolve chat.md from interaction_root (not source_file.parent)
+        iroot = context.interaction_root or context.workspace
+        chat_md = iroot / "chat.md"
         if chat_md.exists():
             sessions.append(t("output.list.default_session"))
 
-        # chat/ directory
-        chat_dir = workspace / "chat"
+        # chat/ directory (sibling of chat.md in interaction_root)
+        chat_dir = iroot / "chat"
         if chat_dir.is_dir():
             for f in sorted(chat_dir.glob("*.md")):
                 if f.name.startswith("_"):

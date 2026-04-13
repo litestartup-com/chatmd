@@ -42,6 +42,7 @@ class SkillContext:
     source_file: Path
     source_line: int
     workspace: Path
+    interaction_root: Path | None = None
 
 
 class Skill(ABC):
@@ -55,6 +56,17 @@ class Skill(ABC):
     is_dangerous: bool = False
     aliases: list[str] = []
     params_schema: list[ParamDef] = []
+
+    def configure(self, config: dict, context: SkillContext) -> None:
+        """Optional lifecycle hook — called after instantiation, before registration.
+
+        Args:
+            config: Plugin-specific config from skills.yaml.
+            context: Workspace context (workspace path, interaction_root, etc.).
+        """
+
+    def teardown(self) -> None:
+        """Optional cleanup hook — called when skill is unloaded/disabled."""
 
     @abstractmethod
     def execute(self, input_text: str, args: dict, context: SkillContext) -> SkillResult:

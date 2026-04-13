@@ -45,8 +45,15 @@ MESSAGES: dict[str, str] = {
     "output.help.group.datetime": "Date & Time",
     "output.help.group.ai": "AI",
     "output.help.group.markdown": "Markdown Templates",
+    "output.help.group.cron": "Cron Tasks",
     "output.help.group.utility": "Utilities",
     "output.help.group.custom": "Custom",
+    "output.help.overview_hint": (
+        "Use `/help <alias>` for group details (e.g. `/help dt`),"
+        " `/help <cmd>` for a single command."
+    ),
+    "output.help.group_empty": "No commands in this group.",
+    "output.help.cmd_not_found": "Command not found: `/{cmd}`",
 
     # ── /status output ──────────────────────────────────────────────────
     "output.status.running": "🟢 Agent running\n",
@@ -198,12 +205,171 @@ MESSAGES: dict[str, str] = {
     "output.upload.detail_failed": "❌ {path}: {detail}",
     "output.upload.detail_not_found": "⚠️ {path}: file not found, skipped",
     "output.upload.detail_skipped": "⚠️ {path}: {reason}",
+    "skill.upload.help_text": (
+        "### Usage\n\n"
+        "| Command | Description |\n"
+        "|---------|-------------|\n"
+        "| `/upload` | Scan current file, upload all local images, replace with URLs |\n"
+        "| `/upload <path>` | Upload a single image file and return its remote URL |\n\n"
+        "### Auto Upload\n\n"
+        "When `upload.auto` is enabled in `agent.yaml`, new local images added to any "
+        "watched `.md` file are **automatically** uploaded and replaced with remote URLs "
+        "on save — no manual `/upload` needed.\n\n"
+        "### Configuration (`agent.yaml` → `upload:`)\n\n"
+        "```yaml\n"
+        "upload:\n"
+        "  auto: true          # Enable auto-upload on file change\n"
+        "  max_size_mb: 10     # Max file size (default 10MB)\n"
+        "  extensions:         # Allowed extensions (default below)\n"
+        "    - jpg\n"
+        "    - jpeg\n"
+        "    - png\n"
+        "    - gif\n"
+        "    - webp\n"
+        "    - svg\n"
+        "    - ico\n"
+        "```\n\n"
+        "### Prerequisites\n\n"
+        "- A `litestartup` provider must be configured in `ai.providers`\n"
+        "- The provider's API key must have upload permission\n\n"
+        "### Supported Image Syntax\n\n"
+        "| Syntax | Example |\n"
+        "|--------|---------|\n"
+        "| Markdown | `![alt](./img/photo.png)` |\n"
+        "| HTML | `<img src=\"./img/photo.png\" />` |\n\n"
+        "Remote URLs (`http://`, `https://`) are automatically skipped."
+    ),
+
+    # ── /notify skill ─────────────────────────────────────────────────────
+    "skill.notify.description": "Send a notification",
+    "error.notify_empty": "Please provide a notification message",
+    "error.notify_not_configured": "Notification manager not configured",
+    "error.notify_disabled": "Notification is disabled in configuration",
+    "output.notify.title": "ChatMD Reminder",
+    "output.notify.success": "✅ Notification sent ({channels}): {message}",
+    "skill.notify.help_text": (
+        "### Usage\n\n"
+        "| Command | Description |\n"
+        "|---------|-------------|\n"
+        "| `/notify <message>` | Send a notification through all channels |\n\n"
+        "### With Cron (Scheduled Reminders)\n\n"
+        "```cron\n"
+        "0 18 * * * /notify Time for dinner!\n"
+        "0 9 * * 1 /notify Weekly standup in 15 minutes\n"
+        "```\n\n"
+        "### Notification Channels\n\n"
+        "| Channel | Description |\n"
+        "|---------|-------------|\n"
+        "| **FileChannel** | Appends to `notification.md` (always active) |\n"
+        "| **SystemChannel** | Desktop toast (Windows/macOS/Linux) |\n"
+        "| **EmailChannel** | Email via LiteStartup API |\n\n"
+        "### Configuration (`agent.yaml` → `notification:`)\n\n"
+        "```yaml\n"
+        "notification:\n"
+        "  enabled: true\n"
+        "  system_notify: true     # Desktop toast\n"
+        "  email:\n"
+        "    enabled: true\n"
+        "    from: support@chatmarkdown.org\n"
+        "    from_name: ChatMarkdown\n"
+        "    to: user@example.com\n"
+        "```\n\n"
+        "### Prerequisites\n\n"
+        "- `notification.enabled: true` in `agent.yaml`\n"
+        "- For email: a `litestartup` provider with `notification` scope\n"
+        "- For desktop: OS-level notification support"
+    ),
+
+    # ── /confirm skill ─────────────────────────────────────────────────────
+    "skill.confirm.description": "Execute a pending confirmation",
+    "skill.confirm.help_text": (
+        "### Usage\n\n"
+        "| Command | Description |\n"
+        "|---------|-------------|\n"
+        "| `/confirm` | Execute the most recent pending command |\n"
+        "| `/confirm #confirm-3` | Execute a specific pending command by ID |\n"
+        "| `/confirm list` | List all pending confirmations |\n\n"
+        "### How It Works\n\n"
+        "Commands listed in `trigger.confirm.commands` require explicit confirmation.\n"
+        "When you type such a command, a confirmation prompt appears instead of executing.\n"
+        "Type `/confirm` to proceed, or delete the prompt line to cancel.\n\n"
+        "### Configuration (`agent.yaml` → `trigger.confirm:`)\n\n"
+        "```yaml\n"
+        "trigger:\n"
+        "  confirm:\n"
+        "    enabled: true\n"
+        "    commands:\n"
+        "      - /sync\n"
+        "      - /upload\n"
+        "      - /new\n"
+        "```"
+    ),
 
     # ── /new session ───────────────────────────────────────────────────────
     "error.new_no_chat_md": "chat.md not found",
     "error.new_empty_content": "No content to archive",
     "output.new.success": "✅ Archived to chat/{archive}, new session started",
     "new.fallback_topic": "general-chat",
+    "new.datetime_format": "%b %d, %Y %H:%M:%S",
+    "new.session_timestamp": (
+        "{datetime} {weekday} | Week {week}, Day {day} ({pct}% of {year})"
+    ),
+
+    # ── /cron skill ──────────────────────────────────────────────────────
+    "skill.cron.description": "Manage cron scheduled tasks",
+    "error.cron_not_configured": "Cron scheduler not configured",
+    "error.cron_unknown_subcommand": "Unknown subcommand: {subcmd}",
+    "output.cron.list_empty": "No cron jobs registered (0 jobs)",
+    "output.cron.list_header": "**Cron Jobs** ({count} registered)\n",
+    "output.cron.status_summary": (
+        "**Cron Status** — {total} jobs"
+        " ({active} active, {paused} paused)"
+        " | {runs} runs, {fails} failures"
+    ),
+    "output.cron.next_header": "**Upcoming Executions** (next {count})\n",
+    "output.cron.paused": "Job `{job_id}` paused",
+    "output.cron.resumed": "Job `{job_id}` resumed",
+    "output.cron.run_triggered": "Job `{job_id}` manually triggered",
+    "output.cron.test_complete": "[TEST] Job `{job_id}` executed",
+    "output.cron.validate_header": "**Cron Validation** ({count} jobs checked)\n",
+    "output.cron.history_empty": "No execution history",
+    "output.cron.history_header": "**Execution History** ({count} records)\n",
+    "error.cron_missing_id": "Job ID required",
+    "error.cron_job_not_found": "Job not found: {job_id}",
+    "error.cron_add_usage": "Usage: /cron add <expr> <command>",
+    "error.cron_dangerous_command": "Dangerous command not allowed in cron: {command}",
+    "error.cron_no_file": "Cron file not configured",
+    "output.cron.added": "Added cron task: `{expr}` → `{command}`",
+    "output.cron.removed": "Job `{job_id}` removed",
+    "skill.cron.help_text": (
+        "### Subcommands\n\n"
+        "| Command | Description |\n"
+        "|---------|-------------|\n"
+        "| `/cron` | List all registered jobs with next run time |\n"
+        "| `/cron status` | Overview with run/fail statistics |\n"
+        "| `/cron next [N]` | Preview next N executions (default 5) |\n"
+        "| `/cron pause <ID>` | Pause a job |\n"
+        "| `/cron resume <ID>` | Resume a paused job |\n"
+        "| `/cron run <ID>` | Manually trigger a job |\n"
+        "| `/cron test <ID>` | Test-run a job (marked `[TEST]`) |\n"
+        "| `/cron validate` | Syntax-check all cron blocks |\n"
+        "| `/cron history [ID]` | Last 20 execution records |\n"
+        "| `/cron add <expr> <cmd>` | Add a job to cron.md |\n"
+        "| `/cron remove <ID>` | Comment out a job in cron.md |\n\n"
+        "### Configuration (`agent.yaml` → `cron:`)\n\n"
+        "| Key | Default | Description |\n"
+        "|-----|---------|-------------|\n"
+        "| `enabled` | `false` | Enable cron engine |\n"
+        "| `cron_file` | `cron.md` | Cron definition file |\n"
+        "| `job_timeout` | `300` | Max seconds per job |\n"
+        "| `max_failures` | `5` | Auto-pause after N consecutive failures |\n"
+        "| `missed_policy` | `run` | `run` or `skip` missed jobs on startup |\n"
+        "| `tick_interval` | auto | Scheduler tick interval (auto-tuned) |\n"
+        "| `max_history` | `20` | Execution records kept per job |\n\n"
+        "### Safety\n\n"
+        "Dangerous commands (`upload`, `new`, `upgrade`) are blocked from cron.\n"
+        "Jobs failing ≥ `max_failures` times are auto-paused with notification."
+    ),
 
     # ── /sync skill errors ────────────────────────────────────────────────
     "error.sync_not_configured": "Git sync not configured",
@@ -231,10 +397,15 @@ MESSAGES: dict[str, str] = {
 
     # ── Confirmation window ─────────────────────────────────────────────
     "confirm.prompt": (
-        "> ⏳ Confirm `{command}`? "
-        "(auto-execute in {delay}s, delete this line to cancel)"
+        "> ⚠️ `{command}` requires confirmation — "
+        "type `/confirm` to execute, delete this line to cancel"
         " `#{confirm_id}`"
     ),
+    "confirm.confirmed": "✅ Confirmed and executed: `{command}`",
+    "confirm.cancelled": "❌ Cancelled: `{command}`",
+    "confirm.nothing_pending": "No pending commands to confirm.",
+    "confirm.list_header": "Pending confirmations:",
+    "confirm.list_item": "  {confirm_id}: `{command}`",
 
     # ── Index manager ───────────────────────────────────────────────────
     "index.header_note": "> This file is auto-maintained by ChatMD Agent. Do not edit manually.",
@@ -252,15 +423,15 @@ MESSAGES: dict[str, str] = {
     "init.welcome_instruction": (
         "Type a command below the `---` separator and save the file to execute."
     ),
-    "init.mode_prompt": (
-        "Existing files detected, choose a mode\n"
-        "  full      — Full workspace (create chat.md + chat/)\n"
-        "  assistant — Inject assistant only (create .chatmd/ only)\n"
-        "Mode"
-    ),
-    "init.workspace_created": "✅ Workspace created: {workspace} (mode: {mode})",
+    "init.workspace_created": "✅ Workspace created: {workspace}",
     "init.run_start": "Run chatmd start to start the Agent",
     "init.open_chat": "Open chat.md with any editor to start interacting",
+    "init.notification_title": "Notifications",
+    "init.notification_subtitle": (
+        "ChatMarkdown notification inbox"
+        " — Agent appends notifications here,"
+        " you can respond directly."
+    ),
     "init.git_not_installed": "⚠️ Git not installed, skipping Git initialization",
     "init.git_failed": "⚠️ Git initialization failed: {error}",
 
@@ -279,13 +450,15 @@ MESSAGES: dict[str, str] = {
     "cli.agent_not_running": "⚪ Agent not running",
     "cli.agent_not_running_stale": "⚪ Agent not running (stale PID file cleaned)",
     "cli.workspace_label": "   Workspace: {workspace}",
-    "cli.mode_label": "   Mode: {mode}",
     "cli.custom_skills": "   Custom Skills: {yaml_count} YAML + {py_count} Python",
     "cli.daemon_already_running": "ℹ️ Agent is already running (PID {pid})",
     "cli.daemon_started": "🚀 Agent started in background (PID {pid})\n   Workspace: {workspace}",
     "cli.daemon_log_hint": "   Logs: {log}",
     "cli.daemon_stop_hint": "   Run `chatmd stop` to stop the Agent",
     "cli.daemon_failed": "❌ Agent failed to start in background (exit code {code})",
+    "cli.restart_stopping": "🔄 Stopping Agent (PID {pid})...",
+    "cli.restart_starting": "🔄 Restarting Agent...",
+    "cli.restart_not_running": "ℹ️ No running Agent found, starting new daemon...",
 
     # ── service CLI ─────────────────────────────────────────────────────
     "service.installed": "\u2705 Service installed ({platform}: {name})",
@@ -334,9 +507,9 @@ MESSAGES: dict[str, str] = {
     # ── upgrade CLI ─────────────────────────────────────────────────────
     "upgrade.not_workspace": "❌ Not a ChatMD workspace, run `chatmd init` first",
     "upgrade.specify_option": "Please specify an upgrade option:",
-    "upgrade.full_option": "  chatmd upgrade --full  — Upgrade to full workspace",
+    "upgrade.full_option": "  chatmd upgrade --full  — Ensure chatmd/ structure is complete",
     "upgrade.done": "✅ Upgrade completed: {items}",
-    "upgrade.already_full": "ℹ️ Workspace is already in full mode",
+    "upgrade.already_full": "ℹ️ Workspace structure is already complete",
 
     # ── Default user config aliases ─────────────────────────────────────
     "alias.translate_en": "translate(English)",
