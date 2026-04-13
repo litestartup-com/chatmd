@@ -272,11 +272,11 @@ Each session's AI conversation history is saved independently and auto-restored 
 ## CLI Commands
 
 ```bash
-chatmd init <path>           # Initialize workspace
-chatmd init <path> --mode assistant  # Inject assistant capabilities only
+chatmd init <path>             # Initialize workspace
 chatmd start [-w <workspace>]  # Start Agent (foreground)
 chatmd start --daemon          # Start Agent (background daemon)
 chatmd stop [-w <workspace>]   # Stop Agent
+chatmd restart [-w <workspace>]  # Restart Agent (stop + start daemon)
 chatmd status [-w <workspace>] # Check Agent status
 chatmd mode                    # View current trigger mode
 chatmd mode suffix             # Switch to suffix mode (for auto-save editors)
@@ -284,7 +284,7 @@ chatmd mode save               # Switch to save mode (default, manual save)
 chatmd service install         # Register as system service (auto-start on boot)
 chatmd service uninstall       # Unregister system service
 chatmd service status          # Check system service status
-chatmd upgrade --full          # Upgrade assistant → full mode
+chatmd upgrade [-w <workspace>] --full  # Ensure workspace structure is complete
 chatmd --version               # Show version
 ```
 
