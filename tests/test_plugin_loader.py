@@ -105,16 +105,16 @@ class TestLoadSkillsConfig:
         _write_skills_yaml(tmp_path, (
             "discover: manual\n"
             "skills:\n"
-            "  daily_note:\n"
+            "  my_plugin:\n"
             "    enabled: true\n"
             "    config:\n"
-            "      enabled_logs: [journal, dudu]\n"
-            "      delete_unedited: true\n"
+            "      tags: [alpha, beta]\n"
+            "      verbose: true\n"
         ))
         cfg = load_skills_config(tmp_path)
-        entry = cfg.plugins["daily_note"]
-        assert entry.config["enabled_logs"] == ["journal", "dudu"]
-        assert entry.config["delete_unedited"] is True
+        entry = cfg.plugins["my_plugin"]
+        assert entry.config["tags"] == ["alpha", "beta"]
+        assert entry.config["verbose"] is True
 
     def test_invalid_discover_falls_back_to_auto(self, tmp_path):
         _write_skills_yaml(tmp_path, "discover: invalid_mode\n")
