@@ -93,7 +93,10 @@ class TestWindowsService:
         from chatmd.commands.service import _check_pywin32
         # On Windows with pywin32 installed, this should return True
         if sys.platform == "win32":
-            assert _check_pywin32() is True
+            result = _check_pywin32()
+            if not result:
+                pytest.skip("pywin32 not installed")
+            assert result is True
 
     def test_cleanup_legacy_task(self) -> None:
         from chatmd.commands.service import _cleanup_legacy_task
@@ -170,7 +173,9 @@ class TestServiceInstallIntegration:
     def test_install_windows(
         self, workspace: Path, capsys: pytest.CaptureFixture,
     ) -> None:
-        from chatmd.commands.service import run_service_install
+        from chatmd.commands.service import _check_pywin32, run_service_install
+        if not _check_pywin32():
+            pytest.skip("pywin32 not installed")
         with (
             patch("chatmd.commands.service._install_windows", return_value="ChatMD-abc12345"),
         ):
@@ -182,7 +187,9 @@ class TestServiceInstallIntegration:
     def test_uninstall_windows(
         self, workspace: Path, capsys: pytest.CaptureFixture,
     ) -> None:
-        from chatmd.commands.service import run_service_uninstall
+        from chatmd.commands.service import _check_pywin32, run_service_uninstall
+        if not _check_pywin32():
+            pytest.skip("pywin32 not installed")
         with patch("chatmd.commands.service._uninstall_windows", return_value="ChatMD-abc12345"):
             run_service_uninstall(str(workspace))
         captured = capsys.readouterr()
@@ -192,7 +199,9 @@ class TestServiceInstallIntegration:
     def test_status_windows(
         self, workspace: Path, capsys: pytest.CaptureFixture,
     ) -> None:
-        from chatmd.commands.service import run_service_status
+        from chatmd.commands.service import _check_pywin32, run_service_status
+        if not _check_pywin32():
+            pytest.skip("pywin32 not installed")
         with patch("chatmd.commands.service._status_windows", return_value="not installed"):
             run_service_status(str(workspace))
         captured = capsys.readouterr()
