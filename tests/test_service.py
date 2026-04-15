@@ -80,41 +80,30 @@ class TestLaunchdTemplates:
 
 
 class TestWindowsService:
-    """Test Windows Task Scheduler helpers."""
+    """Test Windows Service helpers (pywin32-based)."""
 
-    def test_win_task_name(self) -> None:
-        from chatmd.commands.service import _win_task_name
+    def test_win_service_name(self) -> None:
+        from chatmd.commands.service import _win_service_name
         ws = Path("C:/Users/test/workspace")
-        name = _win_task_name(ws)
+        name = _win_service_name(ws)
         assert name.startswith("ChatMD-")
         assert len(name) == len("ChatMD-") + 8
 
-    def test_pythonw_executable_returns_pythonw_when_exists(self) -> None:
-        from chatmd.commands.service import _pythonw_executable
-        with patch.object(Path, "exists", return_value=True):
-            result = _pythonw_executable()
-        assert result.endswith("pythonw.exe")
+    def test_check_pywin32_available(self) -> None:
+        from chatmd.commands.service import _check_pywin32
+        # On Windows with pywin32 installed, this should return True
+        if sys.platform == "win32":
+            assert _check_pywin32() is True
 
-    def test_pythonw_executable_fallback(self) -> None:
-        from chatmd.commands.service import _pythonw_executable
-        with patch.object(Path, "exists", return_value=False):
-            result = _pythonw_executable()
-        assert result == sys.executable
-
-    def test_install_windows_uses_pythonw(self) -> None:
-        from chatmd.commands.service import _install_windows
+    def test_cleanup_legacy_task(self) -> None:
+        from chatmd.commands.service import _cleanup_legacy_task
         ws = Path("C:/Users/test/workspace")
-        with (
-            patch("subprocess.run") as mock_run,
-            patch("chatmd.commands.service._pythonw_executable",
-                  return_value="C:/Python/pythonw.exe"),
-        ):
-            mock_run.return_value = type("R", (), {"returncode": 0, "stderr": ""})()
-            _install_windows(ws)
-        call_args = mock_run.call_args[0][0]
-        tr_value = call_args[call_args.index("/tr") + 1]
-        assert "pythonw.exe" in tr_value
-        assert "python.exe" not in tr_value.replace("pythonw.exe", "")
+        with patch("subprocess.run") as mock_run:
+            # Simulate no legacy task found
+            mock_run.return_value = type("R", (), {"returncode": 1, "stdout": ""})()
+            _cleanup_legacy_task(ws)
+        # Should have queried schtasks
+        assert mock_run.called
 
 
 class TestServiceCLI:
@@ -178,43 +167,41 @@ class TestServiceInstallIntegration:
             run_service_install(str(tmp_path))
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
-    def test_install_windows(self, workspace: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_install_windows(
+        self, workspace: Path, capsys: pytest.CaptureFixture,
+    ) -> None:
         from chatmd.commands.service import run_service_install
         with (
-            patch("subprocess.run") as mock_run,
-            patch("chatmd.commands.service._start_agent_now", return_value=12345),
+            patch("chatmd.commands.service._install_windows", return_value="ChatMD-abc12345"),
         ):
-            mock_run.return_value = type("R", (), {"returncode": 0, "stderr": ""})()
             run_service_install(str(workspace))
         captured = capsys.readouterr()
         assert "installed" in captured.out.lower() or "已安装" in captured.out
-        assert "12345" in captured.out
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
-    def test_uninstall_windows(self, workspace: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_uninstall_windows(
+        self, workspace: Path, capsys: pytest.CaptureFixture,
+    ) -> None:
         from chatmd.commands.service import run_service_uninstall
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = type("R", (), {"returncode": 0})()
+        with patch("chatmd.commands.service._uninstall_windows", return_value="ChatMD-abc12345"):
             run_service_uninstall(str(workspace))
         captured = capsys.readouterr()
         assert "uninstalled" in captured.out.lower() or "已卸载" in captured.out
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
-    def test_status_windows(self, workspace: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_status_windows(
+        self, workspace: Path, capsys: pytest.CaptureFixture,
+    ) -> None:
         from chatmd.commands.service import run_service_status
-        mock_result = type("R", (), {"returncode": 1, "stdout": ""})()
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("chatmd.commands.service._status_windows", return_value="not installed"):
             run_service_status(str(workspace))
         captured = capsys.readouterr()
-        assert "not registered" in captured.out.lower() or "服务" in captured.out
+        assert "not installed" in captured.out.lower() or "服务" in captured.out
 
     @pytest.mark.skipif(sys.platform != "linux", reason="Linux only")
     def test_install_systemd(self, workspace: Path, capsys: pytest.CaptureFixture) -> None:
         from chatmd.commands.service import run_service_install
-        with (
-            patch("subprocess.run"),
-            patch("chatmd.commands.service._start_agent_now", return_value=12345),
-        ):
+        with patch("subprocess.run"):
             run_service_install(str(workspace))
         captured = capsys.readouterr()
         assert "installed" in captured.out.lower() or "已安装" in captured.out
@@ -222,10 +209,7 @@ class TestServiceInstallIntegration:
     @pytest.mark.skipif(sys.platform != "darwin", reason="macOS only")
     def test_install_launchd(self, workspace: Path, capsys: pytest.CaptureFixture) -> None:
         from chatmd.commands.service import run_service_install
-        with (
-            patch("subprocess.run"),
-            patch("chatmd.commands.service._start_agent_now", return_value=12345),
-        ):
+        with patch("subprocess.run"):
             run_service_install(str(workspace))
         captured = capsys.readouterr()
         assert "installed" in captured.out.lower() or "已安装" in captured.out

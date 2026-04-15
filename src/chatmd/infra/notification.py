@@ -6,6 +6,7 @@ Architecture::
     ├─ FileChannel (default, always present) → writes to notification.md
     ├─ SystemChannel (optional) → desktop toast (T-061)
     ├─ EmailChannel (optional) → LiteStartup Email API (T-078)
+    ├─ BotNotificationChannel (optional) → LiteStartup Bot push (T-092)
     └─ (future) WebhookChannel / NostrChannel
 """
 
@@ -338,6 +339,42 @@ class EmailChannel(NotificationChannel):
         return "\n".join(parts)
 
 
+class BotNotificationChannel(NotificationChannel):
+    """Push notifications to user's bound Bot platforms via LiteStartup API.
+
+    Uses ``POST /api/bot/notify``.  Graceful degradation: if the API call
+    fails (user not bound, network error, etc.), a warning is logged and
+    the notification is silently dropped — other channels are unaffected.
+    """
+
+    def __init__(self, provider: LiteStartupProvider) -> None:
+        self._provider = provider
+
+    def send(
+        self,
+        title: str,
+        body: str,
+        level: str = "info",
+        source: str = "",
+        actions: list[str] | None = None,
+    ) -> None:
+        """Send a notification via Bot push."""
+        icon = _LEVEL_ICONS.get(level, "ℹ️")
+        message = f"{icon} {title}\n{body}"
+        if source:
+            message += f"\n(source: {source})"
+
+        result = self._provider.bot_notify(message=message)
+        if result["success"]:
+            platforms = ", ".join(result.get("delivered_to", []))
+            logger.debug("Bot notification sent: %s → %s", title, platforms)
+        else:
+            logger.warning(
+                "Bot notification failed: %s — %s",
+                title, result.get("error"),
+            )
+
+
 class NotificationManager:
     """Dispatch notifications to registered channels.
 
@@ -365,6 +402,15 @@ class NotificationManager:
         """Register a notification channel."""
         self._channels.append(channel)
 
+    # Short name → class name mapping for channel filtering
+    _CHANNEL_ALIASES: dict[str, str] = {
+        "file": "FileChannel",
+        "system": "SystemChannel",
+        "desktop": "SystemChannel",
+        "email": "EmailChannel",
+        "bot": "BotNotificationChannel",
+    }
+
     def notify(
         self,
         title: str,
@@ -372,12 +418,29 @@ class NotificationManager:
         level: str = "info",
         source: str = "",
         actions: list[str] | None = None,
+        channels: list[str] | None = None,
     ) -> None:
-        """Send a notification to all registered channels."""
+        """Send a notification to registered channels.
+
+        When *channels* is ``None`` (default), all channels are used.
+        Otherwise only channels whose class name matches one of the
+        short names (e.g. ``"email"``, ``"bot"``) are dispatched to.
+        """
         if not self._enabled:
             return
 
+        # Resolve short names to class names
+        allowed: set[str] | None = None
+        if channels:
+            allowed = set()
+            for ch in channels:
+                cls_name = self._CHANNEL_ALIASES.get(ch.lower(), ch)
+                allowed.add(cls_name)
+
         for channel in self._channels:
+            cls_name = type(channel).__name__
+            if allowed and cls_name not in allowed:
+                continue
             try:
                 channel.send(
                     title=title,
@@ -389,5 +452,5 @@ class NotificationManager:
             except Exception:
                 logger.exception(
                     "Failed to send notification via %s",
-                    type(channel).__name__,
+                    cls_name,
                 )

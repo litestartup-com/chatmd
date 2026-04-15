@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chatmd"
-version = "0.2.4"
+version = "0.2.7"
 description = "A local-first, text-driven personal AI Agent engine"
 readme = "README.md"
 license = "MIT"
@@ -30,6 +30,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+win-service = [
+    "pywin32>=306; sys_platform == 'win32'",
+]
 dev = [
     "pytest>=7.4",
     "pytest-asyncio>=0.21",
@@ -54,6 +57,7 @@ select = ["E", "F", "W", "I", "N", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/chatmd/i18n/zh_CN.py" = ["N999"]
+"src/chatmd/commands/win_service.py" = ["N802", "N806"]
 "tests/test_i18n.py" = ["N802"]
 
 [tool.pytest.ini_options]

@@ -48,6 +48,15 @@ class TestInitCommand:
         assert result.exit_code == 0
         assert not (target / ".git").exists()
 
+    def test_init_gitignore_runtime_files(self, tmp_path):
+        target = tmp_path / "workspace"
+        runner = CliRunner()
+        result = runner.invoke(main, ["init", str(target)])
+        assert result.exit_code == 0
+        gitignore = (target / ".gitignore").read_text(encoding="utf-8")
+        for pattern in ("agent.pid", "stop.signal", ".chatmd/logs/", ".chatmd/state/"):
+            assert pattern in gitignore, f"{pattern} missing from .gitignore"
+
     def test_init_idempotent(self, tmp_path):
         target = tmp_path / "workspace"
         runner = CliRunner()

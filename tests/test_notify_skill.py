@@ -13,9 +13,8 @@ from chatmd.infra.notification import (
     NotificationManager,
     SystemChannel,
 )
-from chatmd.skills.base import SkillContext, SkillResult
+from chatmd.skills.base import SkillContext
 from chatmd.skills.notify import NotifySkill
-
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -57,6 +56,7 @@ class TestNotifySkill:
             body="Remember to eat dinner",
             level="info",
             source="user",
+            channels=None,
         )
 
     def test_empty_message_error(self, context: SkillContext) -> None:
@@ -139,6 +139,108 @@ class TestNotifySkill:
         assert result.success is True
         assert "FileChannel" in result.output
         assert "EmailChannel" in result.output
+
+    def test_channel_filter_single(self, context: SkillContext) -> None:
+        """channel=email should pass ['email'] to notify()."""
+        mgr = MagicMock(spec=NotificationManager)
+        mgr.enabled = True
+        skill = NotifySkill(notification_mgr=mgr)
+
+        result = skill.execute("test", {"channel": "email"}, context)
+
+        assert result.success is True
+        assert "email" in result.output
+        mgr.notify.assert_called_once_with(
+            title="ChatMD Reminder",
+            body="test",
+            level="info",
+            source="user",
+            channels=["email"],
+        )
+
+    def test_channel_filter_multi(self, context: SkillContext) -> None:
+        """channel=email,bot should pass both channels."""
+        mgr = MagicMock(spec=NotificationManager)
+        mgr.enabled = True
+        skill = NotifySkill(notification_mgr=mgr)
+
+        result = skill.execute("alert", {"channel": "email,bot"}, context)
+
+        assert result.success is True
+        assert "email" in result.output
+        assert "bot" in result.output
+        mgr.notify.assert_called_once_with(
+            title="ChatMD Reminder",
+            body="alert",
+            level="info",
+            source="user",
+            channels=["email", "bot"],
+        )
+
+    def test_channel_filter_invalid(self, context: SkillContext) -> None:
+        """Invalid channel name should return error."""
+        mgr = MagicMock(spec=NotificationManager)
+        mgr.enabled = True
+        skill = NotifySkill(notification_mgr=mgr)
+
+        result = skill.execute("test", {"channel": "sms"}, context)
+
+        assert result.success is False
+        assert "sms" in (result.error or "")
+        mgr.notify.assert_not_called()
+
+    def test_positional_channel_shorthand(self, context: SkillContext) -> None:
+        """Positional arg 'email' should be treated as channel filter: /notify(email) msg."""
+        mgr = MagicMock(spec=NotificationManager)
+        mgr.enabled = True
+        skill = NotifySkill(notification_mgr=mgr)
+
+        result = skill.execute("hello world", {"_positional": "email"}, context)
+
+        assert result.success is True
+        assert "email" in result.output
+        mgr.notify.assert_called_once_with(
+            title="ChatMD Reminder",
+            body="hello world",
+            level="info",
+            source="user",
+            channels=["email"],
+        )
+
+    def test_positional_channel_multi(self, context: SkillContext) -> None:
+        """Positional 'email,bot' treated as multi-channel filter: /notify(email,bot) msg."""
+        mgr = MagicMock(spec=NotificationManager)
+        mgr.enabled = True
+        skill = NotifySkill(notification_mgr=mgr)
+
+        result = skill.execute("alert", {"_positional": "email,bot"}, context)
+
+        assert result.success is True
+        mgr.notify.assert_called_once_with(
+            title="ChatMD Reminder",
+            body="alert",
+            level="info",
+            source="user",
+            channels=["email", "bot"],
+        )
+
+    def test_positional_non_channel_is_message(self, context: SkillContext) -> None:
+        """Positional arg that is NOT a channel name should be used as message."""
+        mgr = MagicMock(spec=NotificationManager)
+        mgr.enabled = True
+        mgr.channel_names = ["FileChannel"]
+        skill = NotifySkill(notification_mgr=mgr)
+
+        result = skill.execute("", {"_positional": "hello world"}, context)
+
+        assert result.success is True
+        mgr.notify.assert_called_once_with(
+            title="ChatMD Reminder",
+            body="hello world",
+            level="info",
+            source="user",
+            channels=None,
+        )
 
 
 # ── EmailChannel tests ───────────────────────────────────────────────────
@@ -247,6 +349,75 @@ class TestNotificationManagerChannelNames:
         assert "FileChannel" in names
         assert "SystemChannel" in names
         assert len(names) == 2
+
+
+class TestNotificationManagerChannelFilter:
+    """Tests for NotificationManager.notify() with channel filtering."""
+
+    def test_no_filter_dispatches_all(self, tmp_path: Path) -> None:
+        """channels=None sends to all channels."""
+        mgr = NotificationManager()
+        file_ch = MagicMock(spec=FileChannel)
+        type(file_ch).__name__ = "FileChannel"
+        sys_ch = MagicMock(spec=SystemChannel)
+        type(sys_ch).__name__ = "SystemChannel"
+        mgr.add_channel(file_ch)
+        mgr.add_channel(sys_ch)
+
+        mgr.notify(title="t", body="b")
+
+        file_ch.send.assert_called_once()
+        sys_ch.send.assert_called_once()
+
+    def test_filter_email_only(self, tmp_path: Path) -> None:
+        """channels=['email'] dispatches only to EmailChannel."""
+        mgr = NotificationManager()
+        file_ch = MagicMock()
+        type(file_ch).__name__ = "FileChannel"
+        email_ch = MagicMock()
+        type(email_ch).__name__ = "EmailChannel"
+        mgr.add_channel(file_ch)
+        mgr.add_channel(email_ch)
+
+        mgr.notify(title="t", body="b", channels=["email"])
+
+        file_ch.send.assert_not_called()
+        email_ch.send.assert_called_once()
+
+    def test_filter_multiple_channels(self, tmp_path: Path) -> None:
+        """channels=['file', 'email'] skips SystemChannel."""
+        mgr = NotificationManager()
+        file_ch = MagicMock()
+        type(file_ch).__name__ = "FileChannel"
+        sys_ch = MagicMock()
+        type(sys_ch).__name__ = "SystemChannel"
+        email_ch = MagicMock()
+        type(email_ch).__name__ = "EmailChannel"
+        mgr.add_channel(file_ch)
+        mgr.add_channel(sys_ch)
+        mgr.add_channel(email_ch)
+
+        mgr.notify(title="t", body="b", channels=["file", "email"])
+
+        file_ch.send.assert_called_once()
+        sys_ch.send.assert_not_called()
+        email_ch.send.assert_called_once()
+
+    def test_filter_bot_channel(self) -> None:
+        """channels=['bot'] dispatches only to BotNotificationChannel."""
+        from chatmd.infra.notification import BotNotificationChannel
+        mgr = NotificationManager()
+        file_ch = MagicMock()
+        type(file_ch).__name__ = "FileChannel"
+        bot_ch = MagicMock(spec=BotNotificationChannel)
+        type(bot_ch).__name__ = "BotNotificationChannel"
+        mgr.add_channel(file_ch)
+        mgr.add_channel(bot_ch)
+
+        mgr.notify(title="t", body="b", channels=["bot"])
+
+        file_ch.send.assert_not_called()
+        bot_ch.send.assert_called_once()
 
 
 # ── LiteStartupProvider.send_notification_email tests ────────────────────

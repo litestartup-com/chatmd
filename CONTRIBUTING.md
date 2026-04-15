@@ -69,7 +69,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ### Reporting Bugs
 
-1. Search [existing issues](https://github.com/chatmarkdown/chatmd/issues) first
+1. Search [existing issues](https://github.com/litestartup-com/chatmd/issues) first
 2. Use the **Bug Report** issue template
 3. Include: Python version, OS, steps to reproduce, expected vs actual behavior
 
@@ -142,5 +142,5 @@ By contributing, you agree that your contributions will be licensed under the [M
 
 ## Questions?
 
-- Open a [Discussion](https://github.com/chatmarkdown/chatmd/discussions) for general questions
+- Open a [Discussion](https://github.com/litestartup-com/chatmd/discussions) for general questions
 - Check the [README](README.md) for usage documentation

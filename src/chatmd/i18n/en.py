@@ -77,6 +77,9 @@ MESSAGES: dict[str, str] = {
     "output.sync.no_changes": "No changes to sync",
     "output.sync.conflict": "⚠️ Git merge conflict, please resolve manually",
     "output.sync.success": "✅ Git sync completed",
+    "output.sync.success_detail": "✅ Git sync completed ({detail})",
+    "output.sync.pulled": "↓{count} pulled",
+    "output.sync.pushed": "↑{count} pushed",
     "output.sync.git_failed": "Git operation failed: {error}",
     "output.sync.git_not_installed": "Git is not installed",
 
@@ -245,24 +248,31 @@ MESSAGES: dict[str, str] = {
     "error.notify_empty": "Please provide a notification message",
     "error.notify_not_configured": "Notification manager not configured",
     "error.notify_disabled": "Notification is disabled in configuration",
+    "error.notify_invalid_channel": (
+        "Invalid channel: {channels}. Valid channels: {valid}"
+    ),
     "output.notify.title": "ChatMD Reminder",
     "output.notify.success": "✅ Notification sent ({channels}): {message}",
     "skill.notify.help_text": (
         "### Usage\n\n"
         "| Command | Description |\n"
         "|---------|-------------|\n"
-        "| `/notify <message>` | Send a notification through all channels |\n\n"
+        "| `/notify <message>` | Send through all channels |\n"
+        "| `/notify(email) <msg>` | Send via email only |\n"
+        "| `/notify(bot) <msg>` | Send via bot only |\n"
+        "| `/notify(email,bot) <msg>` | Send via email + bot |\n\n"
         "### With Cron (Scheduled Reminders)\n\n"
         "```cron\n"
         "0 18 * * * /notify Time for dinner!\n"
-        "0 9 * * 1 /notify Weekly standup in 15 minutes\n"
+        "0 9 * * 1 /notify(bot) Weekly standup in 15 minutes\n"
         "```\n\n"
         "### Notification Channels\n\n"
-        "| Channel | Description |\n"
-        "|---------|-------------|\n"
-        "| **FileChannel** | Appends to `notification.md` (always active) |\n"
-        "| **SystemChannel** | Desktop toast (Windows/macOS/Linux) |\n"
-        "| **EmailChannel** | Email via LiteStartup API |\n\n"
+        "| Channel | Short Name | Description |\n"
+        "|---------|------------|-------------|\n"
+        "| **FileChannel** | `file` | Appends to `notification.md` (always active) |\n"
+        "| **SystemChannel** | `system` | Desktop toast (Windows/macOS/Linux) |\n"
+        "| **EmailChannel** | `email` | Email via LiteStartup API |\n"
+        "| **BotNotificationChannel** | `bot` | Push to Telegram/Feishu Bot |\n\n"
         "### Configuration (`agent.yaml` → `notification:`)\n\n"
         "```yaml\n"
         "notification:\n"
@@ -278,6 +288,92 @@ MESSAGES: dict[str, str] = {
         "- `notification.enabled: true` in `agent.yaml`\n"
         "- For email: a `litestartup` provider with `notification` scope\n"
         "- For desktop: OS-level notification support"
+    ),
+
+    # ── /inbox skill ───────────────────────────────────────────────────────
+    "skill.inbox.description": "Show today's inbox summary",
+    "error.inbox_invalid_date": "Invalid date format: {date} (expected YYYY-MM-DD)",
+    "output.inbox.empty": "No inbox messages for {date}",
+    "output.inbox.header": "## Inbox {date} ({count} messages)\n",
+    "output.inbox.table_header": "| Time | Preview |",
+    "output.inbox.summary": "{count} messages, {first} — {last}",
+    "skill.inbox.help_text": (
+        "### Usage\n\n"
+        "| Command | Description |\n"
+        "|---------|-------------|\n"
+        "| `/inbox` | Show today's inbox summary |\n"
+        "| `/inbox YYYY-MM-DD` | Show inbox for a specific date |\n\n"
+        "### What It Shows\n\n"
+        "- Message count and time range\n"
+        "- Preview table with time and first line of each message\n\n"
+        "### How It Works\n\n"
+        "Reads `chatmd/inbox/YYYY-MM-DD.md` files written by the Telegram Bot.\n"
+        "Use `/sync` first to pull the latest messages from the remote repo."
+    ),
+
+    # ── /bind skill ────────────────────────────────────────────────────────
+    "skill.bind.description": "Bind your Git repo to a Telegram Bot",
+    "error.bind_no_provider": (
+        "LiteStartup provider not configured."
+        " Check ai.providers in agent.yaml"
+    ),
+    "error.bind_missing_token": "Please provide your Git platform Access Token.",
+    "error.bind_no_remote": (
+        "No git remote origin found in this workspace."
+        " Is this a Git repository?"
+    ),
+    "error.bind_invalid_repo": "Invalid repository URL format",
+    "error.bind_invalid_platform": "Unsupported platform (currently only Telegram is supported)",
+    "error.bind_already_active": (
+        "You already have an active binding."
+        " Unbind first if you want to rebind"
+    ),
+    "error.bind_unauthorized": "Authentication failed. Check your API key in agent.yaml",
+    "error.bind_rate_limited": "Too many requests. Please wait a few minutes and try again",
+    "error.bind_unknown": "Bind failed (unknown error)",
+    "error.bind_server_error": "Bind API not available: {detail}",
+    "output.bind.title": "🔗 Bot Binding",
+    "output.bind.detected_repo": "Detected repo: `{repo_url}`",
+    "output.bind.platform_detected": "Platform: **{platform}**",
+    "output.bind.token_help_link": "📖 How to create a token: {url}",
+    "output.bind.usage_hint": "Usage: `/bind <your_access_token>`",
+    "output.bind.repo_line": "Repo: `{repo_url}`",
+    "output.bind.platform_line": "Platform: **{platform}**",
+    "output.bind.code_line": "Bind code: **{code}** ({minutes} min valid)",
+    "output.bind.bot_link": "Open Telegram Bot: [{name}]({link})",
+    "output.bind.bot_name": "Telegram Bot: {name}",
+    "output.bind.waiting": "⏳ Send the bind code to the Bot to complete binding.",
+    "output.bind.already_active": "⚠️ You already have an active binding:",
+    "output.bind.current_binding": (
+        "- Platform: **{platform}**\n"
+        "- Repo: `{repo}`\n"
+        "- Bound at: {bound_at}"
+    ),
+    "skill.bind.help_text": (
+        "### Usage\n\n"
+        "```\n"
+        "/bind <git_access_token>\n"
+        "```\n\n"
+        "Bind your Git note repository to a Telegram Bot so you can send "
+        "voice/text/image messages from your phone and have them auto-synced "
+        "to your notes.\n\n"
+        "### How It Works\n\n"
+        "1. chatmd reads your `git remote origin` automatically\n"
+        "2. Calls LiteStartup API to get a 6-digit bind code\n"
+        "3. You send the code to the Telegram Bot\n"
+        "4. Binding complete! Messages → `inbox/` → git sync → your notes\n\n"
+        "### Getting a Token\n\n"
+        "| Platform | Token Type | URL |\n"
+        "|----------|-----------|-----|\n"
+        "| GitHub | Fine-grained PAT | https://github.com/settings/tokens?type=beta |\n"
+        "| GitLab | Personal Access Token |"
+        " https://gitlab.com/-/user_settings/personal_access_tokens |\n"
+        "| Gitee | Private Token | https://gitee.com/profile/personal_access_tokens |\n\n"
+        "**Required permissions**: Repository read & write only.\n\n"
+        "### Example\n\n"
+        "```\n"
+        "/bind ghp_xxxxxxxxxxxxxxxxxxxx\n"
+        "```"
     ),
 
     # ── /confirm skill ─────────────────────────────────────────────────────
@@ -391,6 +487,7 @@ MESSAGES: dict[str, str] = {
     # ── Agent runtime output (written to chat.md) ──────────────────────
     "agent.command_failed": "❌ Command execution failed: {error}",
     "agent.unknown_error": "Unknown error",
+    "agent.network_placeholder": "⏳ {description}...",
     "agent.async_placeholder": "⏳ {description} in progress... `#{task_id}`",
     "agent.async_done": "✅ Done",
     "agent.async_failed_retry": "❌ {error}\n> Type `/retry #{task_id}` to retry",
@@ -472,9 +569,9 @@ MESSAGES: dict[str, str] = {
     ),
     "service.win_hints": (
         "   Manage with:\n"
-        "     chatmd service status   \u2014 check service\n"
-        "     chatmd stop             \u2014 stop Agent\n"
-        "     chatmd service uninstall \u2014 remove service"
+        "     chatmd service status    \u2014 check service\n"
+        "     chatmd service uninstall \u2014 remove service\n"
+        "   Or use services.msc to manage the service."
     ),
     "service.launchd_hints": (
         "   Manage with:\n"
@@ -491,6 +588,38 @@ MESSAGES: dict[str, str] = {
     "service.uninstalled": "\u2705 Service uninstalled ({platform}: {path})",
     "service.status_info": "Service ({platform}): {name} \u2014 {status}",
     "service.unsupported_platform": "\u274c Unsupported platform: {platform}",
+    "service.pywin32_required": (
+        "\u274c pywin32 is required for Windows Service.\n"
+        "   Install with: pip install pywin32"
+    ),
+    "service.pywin32_postinstall_required": (
+        "\u26a0\ufe0f  pywin32 post-install has not been run.\n"
+        "   The Windows Service will fail without it.\n"
+        "   Please run (as Administrator):\n"
+        "     {command}\n"
+        "   Then retry: chatmd service install"
+    ),
+    "service.win_install_failed": (
+        "\u274c Failed to install Windows Service: {error}\n"
+        "   Make sure you are running as Administrator."
+    ),
+    "service.win_uninstall_failed": (
+        "\u26a0\ufe0f Failed to uninstall Windows Service: {error}"
+    ),
+    "service.no_services_found": "No ChatMD services found.",
+    "service.all_services_header": "ChatMD services ({count}):",
+    "service.status_all_hint_linux": (
+        "List all ChatMD services:\n"
+        "  systemctl --user list-units 'chatmd-*'"
+    ),
+    "service.status_all_hint_macos": (
+        "List all ChatMD services:\n"
+        "  launchctl list | grep com.chatmd"
+    ),
+    "service.uninstall_all_win_only": (
+        "--all is only supported on Windows for now.\n"
+        "Use platform-specific commands to manage services."
+    ),
 
     # ── mode CLI ───────────────────────────────────────────────────────
     "mode.current_suffix": "Trigger mode: suffix (marker: {marker})",

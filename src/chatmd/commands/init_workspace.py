@@ -30,7 +30,7 @@ def _build_welcome_chat_md() -> str:
     )
 
 _DEFAULT_AGENT_YAML: dict = {
-    "version": "0.2.3",
+    "version": "0.2.7",
     "ai": {
         "providers": [
             {
@@ -82,7 +82,14 @@ _DEFAULT_USER_YAML: dict = {
 }
 
 _GITIGNORE = """\
-# ChatMD runtime
+# ChatMD config (may contain API keys — use agent.yaml.example as template)
+.chatmd/agent.yaml
+.chatmd/user.yaml
+
+# ChatMD runtime (do not sync — causes merge conflicts)
+.chatmd/agent.pid
+.chatmd/stop.signal
+.chatmd/state/
 .chatmd/state.json
 .chatmd/tasks.json
 .chatmd/queue.json
@@ -110,9 +117,17 @@ def run_init(path_str: str, *, no_git: bool = False) -> None:
     chatmd_dir = workspace / ".chatmd"
     chatmd_dir.mkdir(exist_ok=True)
 
-    # Write config files
+    # Write config files (gitignored — contain real keys)
     _write_yaml(chatmd_dir / "agent.yaml", _DEFAULT_AGENT_YAML)
     _write_yaml(chatmd_dir / "user.yaml", _DEFAULT_USER_YAML)
+
+    # Write example configs (committed to git — safe templates for collaborators)
+    example_agent = chatmd_dir / "agent.yaml.example"
+    if not example_agent.exists():
+        _write_yaml(example_agent, _DEFAULT_AGENT_YAML)
+    example_user = chatmd_dir / "user.yaml.example"
+    if not example_user.exists():
+        _write_yaml(example_user, _DEFAULT_USER_YAML)
 
     # Create .chatmd subdirectories
     for sub in ("skills", "memory", "logs", "history", "state"):

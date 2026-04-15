@@ -63,7 +63,7 @@ class TestUpgrade:
         import yaml
 
         (chatmd_dir / "agent.yaml").write_text(
-            yaml.dump({"version": "0.2.4"}), encoding="utf-8",
+            yaml.dump({"version": "0.2.5"}), encoding="utf-8",
         )
         run_upgrade(str(tmp_path), full=False)
         out = capsys.readouterr().out

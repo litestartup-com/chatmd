@@ -131,6 +131,24 @@ def migrate_0_2_3_to_0_2_4(
     return config
 
 
+# ── Migration: 0.2.4 → 0.2.5 ──────────────────────────────────────
+
+
+@_register("0.2.4", "0.2.5")
+def migrate_0_2_4_to_0_2_5(
+    workspace: Path,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    """Migrate from config version 0.2.4 to 0.2.5.
+
+    Changes:
+    - Ensure ``.gitignore`` includes runtime file patterns
+      (``agent.pid``, ``logs/``, ``state/``) to prevent sync conflicts.
+    """
+    _ensure_gitignore_runtime_patterns(workspace)
+    return config
+
+
 # ── Helpers ───────────────────────────────────────────────────────
 
 _SYNC_PATTERN = re.compile(r"/sync\b")
@@ -167,6 +185,38 @@ def _ensure_sync_cron_job(workspace: Path, config: dict[str, Any]) -> None:
             "# Cron Tasks\n\n```cron\n@every 5m /sync\n```\n",
             encoding="utf-8",
         )
+
+
+_RUNTIME_GITIGNORE_PATTERNS = [
+    ".chatmd/agent.pid",
+    ".chatmd/stop.signal",
+    ".chatmd/state/",
+    ".chatmd/logs/",
+]
+
+
+def _ensure_gitignore_runtime_patterns(workspace: Path) -> None:
+    """Ensure ``.gitignore`` contains runtime file patterns.
+
+    Appends missing patterns to an existing ``.gitignore``, or creates
+    a new one if it does not exist.
+    """
+    gitignore = workspace / ".gitignore"
+
+    if gitignore.exists():
+        content = gitignore.read_text(encoding="utf-8")
+    else:
+        content = ""
+
+    missing = [p for p in _RUNTIME_GITIGNORE_PATTERNS if p not in content]
+    if not missing:
+        return
+
+    lines = "\n".join(missing)
+    addition = f"\n# ChatMD runtime (auto-added by upgrade)\n{lines}\n"
+    content = content.rstrip("\n") + "\n" + addition if content.strip() else addition.lstrip("\n")
+    gitignore.write_text(content, encoding="utf-8")
+    logger.info("Updated .gitignore with runtime patterns: %s", missing)
 
 
 def _backup_agent_yaml(agent_yaml: Path) -> Path:

@@ -1,8 +1,9 @@
 # ChatMarkdown
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyPI version](https://img.shields.io/pypi/v/chatmd.svg)](https://pypi.org/project/chatmd/)
+[![CI](https://github.com/litestartup-com/chatmd/actions/workflows/ci.yml/badge.svg)](https://github.com/litestartup-com/chatmd/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/chatmd)](https://pypi.org/project/chatmd/)
+[![Python](https://img.shields.io/pypi/pyversions/chatmd)](https://pypi.org/project/chatmd/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > Your local-first AI agent, driven by text.
 
@@ -397,7 +398,7 @@ src/chatmd/
 To contribute or debug ChatMarkdown:
 
 ```bash
-git clone https://github.com/user/chatmd.git
+git clone https://github.com/litestartup-com/chatmd.git
 cd chatmd
 pip install -e ".[dev]"    # Install dev dependencies (includes test tools)
 
@@ -418,12 +419,12 @@ ruff check src/ tests/
 
 We welcome contributions of all kinds!
 
-- **Bug reports** — [Open an issue](https://github.com/user/chatmd/issues)
-- **Feature requests** — [Start a discussion](https://github.com/user/chatmd/discussions)
+- **Bug reports** — [Open an issue](https://github.com/litestartup-com/chatmd/issues)
+- **Feature requests** — [Start a discussion](https://github.com/litestartup-com/chatmd/discussions)
 - **Pull requests** — Fork the repo, create a branch, add tests, and submit a PR
 
 ```bash
-git clone https://github.com/user/chatmd.git
+git clone https://github.com/litestartup-com/chatmd.git
 cd chatmd
 pip install -e ".[dev]"
 python -m pytest tests/ -v

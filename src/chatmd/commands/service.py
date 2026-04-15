@@ -3,7 +3,7 @@
 Generates platform-specific service configurations:
 - Linux: systemd user unit (~/.config/systemd/user/chatmd-<hash>.service)
 - macOS: launchd user agent (~/Library/LaunchAgents/com.chatmd.<hash>.plist)
-- Windows: Task Scheduler XML (schtasks /create)
+- Windows: Windows Service via pywin32 (SCM managed)
 """
 
 from __future__ import annotations
@@ -184,107 +184,75 @@ def _status_launchd(workspace: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Windows Task Scheduler
+# Windows Service (pywin32)
 # ---------------------------------------------------------------------------
 
-def _pythonw_executable() -> str:
-    """Return pythonw.exe path (no-console Python), fallback to python.exe."""
-    pythonw = Path(sys.executable).parent / "pythonw.exe"
-    if pythonw.exists():
-        return str(pythonw)
-    return sys.executable
-
-
-def _win_task_name(workspace: Path) -> str:
-    """Return the Windows Task Scheduler task name."""
+def _win_service_name(workspace: Path) -> str:
+    """Return the Windows Service name for a workspace."""
     return f"ChatMD-{_workspace_hash(workspace)}"
 
 
-def _install_windows(workspace: Path) -> str:
-    """Install a Windows Task Scheduler task that runs at logon."""
-    python = _pythonw_executable()
-    task_name = _win_task_name(workspace)
-    cmd_line = f'"{python}" -m chatmd start -w "{workspace}"'
+def _check_pywin32() -> bool:
+    """Check whether pywin32 is installed."""
+    try:
+        import win32serviceutil  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
-    # schtasks /create with logon trigger
-    args = [
-        "schtasks", "/create",
-        "/tn", task_name,
-        "/tr", cmd_line,
-        "/sc", "onlogon",
-        "/rl", "limited",
-        "/f",  # force overwrite
-    ]
-    result = subprocess.run(args, capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        logger.warning("schtasks create failed: %s", result.stderr.strip())
-    return task_name
+
+def _install_windows(workspace: Path) -> str:
+    """Install and start a Windows Service for the ChatMD Agent."""
+    from chatmd.commands.win_service import install_service
+
+    svc_name = _win_service_name(workspace)
+    install_service(svc_name, workspace)
+
+    # Clean up legacy Task Scheduler entry if it exists
+    _cleanup_legacy_task(workspace)
+
+    return svc_name
 
 
 def _uninstall_windows(workspace: Path) -> str:
-    """Remove the Windows Task Scheduler task."""
-    task_name = _win_task_name(workspace)
-    subprocess.run(
-        ["schtasks", "/delete", "/tn", task_name, "/f"],
-        capture_output=True, text=True, check=False,
-    )
-    return task_name
+    """Stop and remove the Windows Service."""
+    from chatmd.commands.win_service import uninstall_service
+
+    svc_name = _win_service_name(workspace)
+    uninstall_service(svc_name)
+
+    # Also clean up legacy Task Scheduler entry
+    _cleanup_legacy_task(workspace)
+
+    return svc_name
 
 
 def _status_windows(workspace: Path) -> str:
-    """Check Windows Task Scheduler task status."""
-    task_name = _win_task_name(workspace)
+    """Query Windows Service status."""
+    from chatmd.commands.win_service import query_service_status
+
+    svc_name = _win_service_name(workspace)
+    return query_service_status(svc_name)
+
+
+def _cleanup_legacy_task(workspace: Path) -> None:
+    """Remove legacy Task Scheduler entry (pre-v0.2.7 migration)."""
+    task_name = f"ChatMD-{_workspace_hash(workspace)}"
     result = subprocess.run(
         ["schtasks", "/query", "/tn", task_name, "/fo", "csv", "/nh"],
         capture_output=True, text=True, check=False,
     )
     if result.returncode == 0 and result.stdout.strip():
-        return "registered"
-    return "not registered"
+        subprocess.run(
+            ["schtasks", "/delete", "/tn", task_name, "/f"],
+            capture_output=True, text=True, check=False,
+        )
+        logger.info("Removed legacy Task Scheduler entry: %s", task_name)
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-def _start_agent_now(workspace: Path) -> int | None:
-    """Start the agent as a daemon right now.  Returns PID or None on failure."""
-    import os
-    import time
-
-    python = _pythonw_executable() if sys.platform == "win32" else sys.executable
-    cmd = [python, "-m", "chatmd", "start", "-w", str(workspace)]
-    log_dir = workspace / ".chatmd" / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-
-    if sys.platform == "win32":
-        creation_flags = (
-            subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-        )
-        proc = subprocess.Popen(
-            cmd,
-            stdout=open(log_dir / "daemon_stdout.log", "a", encoding="utf-8"),
-            stderr=open(log_dir / "daemon_stderr.log", "a", encoding="utf-8"),
-            stdin=subprocess.DEVNULL,
-            creationflags=creation_flags,
-            env=env,
-        )
-    else:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=open(log_dir / "daemon_stdout.log", "a", encoding="utf-8"),
-            stderr=open(log_dir / "daemon_stderr.log", "a", encoding="utf-8"),
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-            env=env,
-        )
-
-    time.sleep(0.5)
-    if proc.poll() is not None:
-        return None
-    return proc.pid
 
 
 def run_service_install(workspace_str: str) -> None:
@@ -311,21 +279,26 @@ def run_service_install(workspace_str: str) -> None:
         click.echo(t("service.auto_start"))
         click.echo(t("service.launchd_hints"))
     elif platform == "win32":
-        name = _install_windows(workspace)
-        click.echo(t("service.installed", platform="Task Scheduler", name=name))
-        click.echo(t("service.auto_start"))
-        click.echo(t("service.win_hints"))
+        if not _check_pywin32():
+            click.echo(t("service.pywin32_required"))
+            sys.exit(1)
+        # Ensure pywin32 DLLs are in place (pywin32_postinstall.py)
+        from chatmd.commands.win_service import check_pywin32_postinstall
+        dll_ok, fix_cmd = check_pywin32_postinstall()
+        if not dll_ok:
+            click.echo(t("service.pywin32_postinstall_required", command=fix_cmd))
+            sys.exit(1)
+        try:
+            name = _install_windows(workspace)
+            click.echo(t("service.installed", platform="Windows Service", name=name))
+            click.echo(t("service.auto_start"))
+            click.echo(t("service.win_hints"))
+        except Exception as exc:
+            click.echo(t("service.win_install_failed", error=str(exc)))
+            sys.exit(1)
     else:
         click.echo(t("service.unsupported_platform", platform=platform))
         sys.exit(1)
-
-    # Also start the agent right now so the user doesn't have to wait for reboot
-    click.echo(t("service.starting_now"))
-    pid = _start_agent_now(workspace)
-    if pid:
-        click.echo(t("service.started_now", pid=pid))
-    else:
-        click.echo(t("service.start_failed"))
 
 
 def run_service_uninstall(workspace_str: str) -> None:
@@ -345,15 +318,30 @@ def run_service_uninstall(workspace_str: str) -> None:
         path = _uninstall_launchd(workspace)
         click.echo(t("service.uninstalled", platform="launchd", path=path))
     elif platform == "win32":
-        name = _uninstall_windows(workspace)
-        click.echo(t("service.uninstalled", platform="Task Scheduler", path=name))
+        if not _check_pywin32():
+            click.echo(t("service.pywin32_required"))
+            sys.exit(1)
+        try:
+            name = _uninstall_windows(workspace)
+            click.echo(t("service.uninstalled", platform="Windows Service", path=name))
+        except Exception as exc:
+            click.echo(t("service.win_uninstall_failed", error=str(exc)))
     else:
         click.echo(t("service.unsupported_platform", platform=platform))
         sys.exit(1)
 
 
-def run_service_status(workspace_str: str) -> None:
-    """Show the ChatMD Agent system service status."""
+def run_service_status(workspace_str: str | None) -> None:
+    """Show the ChatMD Agent system service status.
+
+    When *workspace_str* is ``None``, list all installed ChatMD services
+    (Windows only for now).
+    """
+    if workspace_str is None:
+        # List all services
+        run_service_status_all()
+        return
+
     workspace = Path(workspace_str).resolve()
     chatmd_dir = workspace / ".chatmd"
 
@@ -371,8 +359,60 @@ def run_service_status(workspace_str: str) -> None:
         label = f"com.chatmd.{_workspace_hash(workspace)}"
         click.echo(t("service.status_info", platform="launchd", name=label, status=status))
     elif platform == "win32":
+        if not _check_pywin32():
+            click.echo(t("service.pywin32_required"))
+            sys.exit(1)
         status = _status_windows(workspace)
-        name = _win_task_name(workspace)
-        click.echo(t("service.status_info", platform="Task Scheduler", name=name, status=status))
+        name = _win_service_name(workspace)
+        click.echo(t("service.status_info", platform="Windows Service", name=name, status=status))
     else:
         click.echo(t("service.unsupported_platform", platform=platform))
+
+
+def run_service_status_all() -> None:
+    """List all installed ChatMD services (Windows only for now)."""
+    platform = sys.platform
+    if platform == "win32":
+        if not _check_pywin32():
+            click.echo(t("service.pywin32_required"))
+            sys.exit(1)
+        from chatmd.commands.win_service import list_all_services
+        services = list_all_services()
+        if not services:
+            click.echo(t("service.no_services_found"))
+            return
+        click.echo(t("service.all_services_header", count=len(services)))
+        for name, ws, status in services:
+            click.echo(f"  {name}  {status:<10}  {ws}")
+    elif platform == "linux":
+        click.echo(t("service.status_all_hint_linux"))
+    elif platform == "darwin":
+        click.echo(t("service.status_all_hint_macos"))
+    else:
+        click.echo(t("service.unsupported_platform", platform=platform))
+
+
+def run_service_uninstall_all() -> None:
+    """Uninstall all ChatMD Windows Services."""
+    platform = sys.platform
+    if platform != "win32":
+        click.echo(t("service.uninstall_all_win_only"))
+        return
+    if not _check_pywin32():
+        click.echo(t("service.pywin32_required"))
+        sys.exit(1)
+    from chatmd.commands.win_service import list_all_services, uninstall_service
+    services = list_all_services()
+    if not services:
+        click.echo(t("service.no_services_found"))
+        return
+    for name, ws, _status in services:
+        try:
+            uninstall_service(name)
+            click.echo(t("service.uninstalled", platform="Windows Service", path=name))
+        except Exception as exc:
+            click.echo(t("service.win_uninstall_failed", error=str(exc)))
+    # Also clean up legacy Task Scheduler entries
+    for name, ws, _status in services:
+        if ws != "?":
+            _cleanup_legacy_task(Path(ws))

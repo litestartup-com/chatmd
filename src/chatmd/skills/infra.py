@@ -16,6 +16,7 @@ from chatmd.skills.base import Skill, SkillContext, SkillResult
 if TYPE_CHECKING:
     from chatmd.infra.git_sync import GitSync
     from chatmd.infra.index_manager import IndexManager
+    from chatmd.providers.litestartup import LiteStartupProvider
     from chatmd.security.kernel_gate import KernelGate
 
 logger = logging.getLogger(__name__)
@@ -33,16 +34,32 @@ class SyncSkill(Skill):
     requires_network = True
     aliases = []
 
-    def __init__(self, git_sync: GitSync | None = None) -> None:
+    def __init__(
+        self,
+        git_sync: GitSync | None = None,
+        provider: LiteStartupProvider | None = None,
+    ) -> None:
         self._git_sync = git_sync
+        self._provider = provider
 
     def set_git_sync(self, git_sync: GitSync) -> None:
         self._git_sync = git_sync
+
+    def set_provider(self, provider: LiteStartupProvider) -> None:
+        self._provider = provider
 
     def execute(self, input_text: str, args: dict, context: SkillContext) -> SkillResult:
         if not self._git_sync:
             return SkillResult(success=False, output="", error=t("error.sync_not_configured"))
         success, msg = self._git_sync.sync_now()
+
+        # Notify Bot endpoint that sync completed (resets pending_messages)
+        if success and self._provider:
+            try:
+                self._provider.bot_sync_complete()
+            except Exception:
+                logger.debug("bot_sync_complete call failed (non-fatal)", exc_info=True)
+
         return SkillResult(success=success, output=msg, error=None if success else msg)
 
 

@@ -175,14 +175,28 @@ def service_install(workspace: str) -> None:
     "--workspace",
     "-w",
     type=click.Path(exists=True),
-    default=".",
-    help="Workspace directory (default: current dir).",
+    default=None,
+    help="Workspace directory. Omit to use --all.",
 )
-def service_uninstall(workspace: str) -> None:
+@click.option(
+    "--all",
+    "uninstall_all",
+    is_flag=True,
+    default=False,
+    help="Uninstall all ChatMD services.",
+)
+def service_uninstall(workspace: str | None, uninstall_all: bool) -> None:
     """Uninstall ChatMD Agent system service."""
-    from chatmd.commands.service import run_service_uninstall
-
-    run_service_uninstall(workspace)
+    if uninstall_all:
+        from chatmd.commands.service import run_service_uninstall_all
+        run_service_uninstall_all()
+    elif workspace:
+        from chatmd.commands.service import run_service_uninstall
+        run_service_uninstall(workspace)
+    else:
+        # Default: uninstall current dir workspace
+        from chatmd.commands.service import run_service_uninstall
+        run_service_uninstall(".")
 
 
 @service.command("status")
@@ -190,10 +204,10 @@ def service_uninstall(workspace: str) -> None:
     "--workspace",
     "-w",
     type=click.Path(exists=True),
-    default=".",
-    help="Workspace directory (default: current dir).",
+    default=None,
+    help="Workspace directory. Omit to list all services.",
 )
-def service_status(workspace: str) -> None:
+def service_status(workspace: str | None) -> None:
     """Show ChatMD Agent system service status."""
     from chatmd.commands.service import run_service_status
 

@@ -9,6 +9,7 @@ import yaml
 
 from chatmd.commands.migrations import (
     MIGRATIONS,
+    _ensure_gitignore_runtime_patterns,
     _ensure_sync_cron_job,
     run_migrations,
 )
@@ -41,7 +42,7 @@ def workspace_current(tmp_path: Path) -> Path:
     chatmd_dir.mkdir()
 
     agent_yaml = chatmd_dir / "agent.yaml"
-    config = {"version": "0.2.4", "sync": {"mode": "git"}}
+    config = {"version": "0.2.5", "sync": {"mode": "git"}}
     with open(agent_yaml, "w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False)
 
@@ -52,18 +53,19 @@ class TestRunMigrations:
     """Test the run_migrations() orchestrator."""
 
     def test_migrate_0_1_to_latest(self, workspace: Path) -> None:
-        """Full migration from 0.1 to latest (0.2.4)."""
+        """Full migration from 0.1 to latest (0.2.5)."""
         messages = run_migrations(workspace)
 
         assert any("0.1 → 0.2.3" in m for m in messages)
         assert any("0.2.3 → 0.2.4" in m for m in messages)
+        assert any("0.2.4 → 0.2.5" in m for m in messages)
 
         # Verify config was updated
         agent_yaml = workspace / ".chatmd" / "agent.yaml"
         with open(agent_yaml, encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
-        assert config["version"] == "0.2.4"
+        assert config["version"] == "0.2.5"
         assert "auto_commit" not in config.get("sync", {})
         assert "interval" not in config.get("sync", {})
         assert config["sync"]["mode"] == "git"
@@ -223,6 +225,90 @@ class TestEnsureSyncCronJob:
         _ensure_sync_cron_job(tmp_path, config)
 
         assert cron_md.read_text(encoding="utf-8") == original
+
+
+class TestMigrate024To025:
+    """Test the 0.2.4 → 0.2.5 migration specifics."""
+
+    @pytest.fixture()
+    def workspace_024(self, tmp_path: Path) -> Path:
+        """Create a workspace at version 0.2.4."""
+        chatmd_dir = tmp_path / ".chatmd"
+        chatmd_dir.mkdir()
+        config = {"version": "0.2.4", "sync": {"mode": "git"}}
+        with open(chatmd_dir / "agent.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False)
+        return tmp_path
+
+    def test_gitignore_created(self, workspace_024: Path) -> None:
+        """Migration creates .gitignore with runtime patterns."""
+        run_migrations(workspace_024)
+        gitignore = workspace_024 / ".gitignore"
+        assert gitignore.exists()
+        content = gitignore.read_text(encoding="utf-8")
+        assert ".chatmd/agent.pid" in content
+        assert ".chatmd/logs/" in content
+        assert ".chatmd/state/" in content
+
+    def test_gitignore_appends_missing(self, workspace_024: Path) -> None:
+        """If .gitignore exists but lacks patterns, they are appended."""
+        gitignore = workspace_024 / ".gitignore"
+        gitignore.write_text("*.pyc\n__pycache__/\n", encoding="utf-8")
+
+        run_migrations(workspace_024)
+
+        content = gitignore.read_text(encoding="utf-8")
+        assert "*.pyc" in content
+        assert ".chatmd/agent.pid" in content
+
+    def test_gitignore_idempotent(self, workspace_024: Path) -> None:
+        """If .gitignore already has all patterns, nothing is added."""
+        gitignore = workspace_024 / ".gitignore"
+        original = ".chatmd/agent.pid\n.chatmd/stop.signal\n.chatmd/state/\n.chatmd/logs/\n"
+        gitignore.write_text(original, encoding="utf-8")
+
+        run_migrations(workspace_024)
+
+        content = gitignore.read_text(encoding="utf-8")
+        assert content.count(".chatmd/agent.pid") == 1
+
+
+class TestEnsureGitignoreRuntimePatterns:
+    """Test the _ensure_gitignore_runtime_patterns helper."""
+
+    def test_creates_new_gitignore(self, tmp_path: Path) -> None:
+        """Creates .gitignore if it doesn't exist."""
+        _ensure_gitignore_runtime_patterns(tmp_path)
+        gitignore = tmp_path / ".gitignore"
+        assert gitignore.exists()
+        content = gitignore.read_text(encoding="utf-8")
+        assert ".chatmd/agent.pid" in content
+        assert ".chatmd/stop.signal" in content
+
+    def test_appends_only_missing(self, tmp_path: Path) -> None:
+        """Only appends patterns that are not already present."""
+        gitignore = tmp_path / ".gitignore"
+        gitignore.write_text(".chatmd/agent.pid\n.chatmd/logs/\n", encoding="utf-8")
+
+        _ensure_gitignore_runtime_patterns(tmp_path)
+
+        content = gitignore.read_text(encoding="utf-8")
+        assert content.count(".chatmd/agent.pid") == 1
+        assert ".chatmd/stop.signal" in content
+        assert ".chatmd/state/" in content
+
+    def test_no_change_if_complete(self, tmp_path: Path) -> None:
+        """No modification if all patterns are present."""
+        gitignore = tmp_path / ".gitignore"
+        original = (
+            "# ignore\n.chatmd/agent.pid\n.chatmd/stop.signal\n"
+            ".chatmd/state/\n.chatmd/logs/\n"
+        )
+        gitignore.write_text(original, encoding="utf-8")
+
+        _ensure_gitignore_runtime_patterns(tmp_path)
+
+        assert gitignore.read_text(encoding="utf-8") == original
 
 
 class TestMigrationRegistry:

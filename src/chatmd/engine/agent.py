@@ -32,6 +32,7 @@ from chatmd.infra.config import Config
 from chatmd.infra.file_writer import FileWriter
 from chatmd.infra.git_sync import GitSync
 from chatmd.infra.notification import (
+    BotNotificationChannel,
     EmailChannel,
     FileChannel,
     NotificationManager,
@@ -315,6 +316,15 @@ class Agent:
             return
 
         # Sync skills: execute immediately
+        # For network-requiring skills, show ⏳ placeholder first
+        raw_text_for_replace = cmd.raw_text
+        if getattr(skill, "requires_network", False):
+            desc = t(f"skill.{skill.name}.description")
+            placeholder = f"> {t('agent.network_placeholder', description=desc)}"
+            self._write_back(filepath, cmd.source_line, end_line, cmd.raw_text, placeholder)
+            raw_text_for_replace = placeholder
+            end_line = 0  # placeholder is always a single line
+
         t0 = time.monotonic()
         try:
             result = skill.execute(resolved_cmd.input_text, resolved_cmd.args, context)
@@ -322,12 +332,12 @@ class Agent:
         except Exception as exc:
             logger.exception("Skill '%s' failed", skill.name)
             error_text = f"> {t('agent.command_failed', error=exc)}"
-            self._write_back(filepath, cmd.source_line, end_line, cmd.raw_text, error_text)
+            self._write_back(filepath, cmd.source_line, end_line, raw_text_for_replace, error_text)
             return
         elapsed = time.monotonic() - t0
 
         self._write_skill_result(
-            filepath, cmd.source_line, cmd.raw_text, skill.name, elapsed,
+            filepath, cmd.source_line, raw_text_for_replace, skill.name, elapsed,
             getattr(skill, "category", ""), result,
             input_text=resolved_cmd.input_text,
             end_line=end_line,
@@ -685,6 +695,14 @@ class Agent:
                 email_cfg.get("to", "(default)"),
             )
 
+        # BotNotificationChannel — push to Telegram/Feishu Bot (opt-in)
+        bot_cfg = notif_cfg.get("bot", {}) or {}
+        if bot_cfg.get("enabled", False) and self._litestartup:
+            self._notification_mgr.add_channel(
+                BotNotificationChannel(provider=self._litestartup),
+            )
+            logger.info("BotNotificationChannel registered")
+
     def _init_ai_provider(self) -> None:
         """Initialize the AI provider and LiteStartup unified provider from config."""
         providers = self._config.get("ai.providers", [])
@@ -1030,7 +1048,7 @@ class Agent:
             git_sync = GitSync(workspace=self._workspace)
         self._git_sync = git_sync
 
-        sync_skill = SyncSkill(git_sync=git_sync)
+        sync_skill = SyncSkill(git_sync=git_sync, provider=self._litestartup)
         log_skill = LogSkill(kernel_gate=self._kernel_gate)
         self._router.register(sync_skill)
         self._router.register(log_skill)
@@ -1066,7 +1084,20 @@ class Agent:
             confirmation_window=self._confirmation_window,
         )
         self._router.register(confirm_skill)
-        logger.info("Infra skills registered: sync, log, new, upload, notify, confirm")
+
+        # /inbox — show inbox summary (T-105)
+        from chatmd.skills.inbox import InboxSkill
+        inbox_skill = InboxSkill()
+        self._router.register(inbox_skill)
+
+        # /bind — Bot binding (T-091)
+        from chatmd.skills.bind import BindSkill
+        bind_skill = BindSkill(provider=self._litestartup)
+        self._router.register(bind_skill)
+
+        logger.info(
+            "Infra skills registered: sync, log, new, upload, notify, confirm, inbox, bind",
+        )
 
     def _load_custom_skills(self) -> None:
         """Load user-defined skills from .chatmd/skills/ using plugin config."""

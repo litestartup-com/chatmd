@@ -77,6 +77,9 @@ MESSAGES: dict[str, str] = {
     "output.sync.no_changes": "没有需要同步的变更",
     "output.sync.conflict": "⚠️ Git 合并冲突，请手动解决",
     "output.sync.success": "✅ Git 同步完成",
+    "output.sync.success_detail": "✅ Git 同步完成（{detail}）",
+    "output.sync.pulled": "↓{count} 拉取",
+    "output.sync.pushed": "↑{count} 推送",
     "output.sync.git_failed": "Git 操作失败: {error}",
     "output.sync.git_not_installed": "Git 未安装",
 
@@ -240,24 +243,31 @@ MESSAGES: dict[str, str] = {
     "error.notify_empty": "请提供通知内容",
     "error.notify_not_configured": "通知管理器未配置",
     "error.notify_disabled": "通知功能已在配置中禁用",
+    "error.notify_invalid_channel": (
+        "无效通道: {channels}。可用通道: {valid}"
+    ),
     "output.notify.title": "ChatMD 提醒",
     "output.notify.success": "✅ 通知已发送（{channels}）：{message}",
     "skill.notify.help_text": (
         "### 用法\n\n"
         "| 命令 | 说明 |\n"
         "|------|------|\n"
-        "| `/notify <消息>` | 通过所有已配置的通道发送通知 |\n\n"
+        "| `/notify <消息>` | 通过所有通道发送 |\n"
+        "| `/notify(email) <消息>` | 仅通过邮件发送 |\n"
+        "| `/notify(bot) <消息>` | 仅通过 Bot 发送 |\n"
+        "| `/notify(email,bot) <消息>` | 通过邮件 + Bot 发送 |\n\n"
         "### 配合 Cron（定时提醒）\n\n"
         "```cron\n"
         "0 18 * * * /notify 该吃晚饭了！\n"
-        "0 9 * * 1 /notify 周会还有 15 分钟\n"
+        "0 9 * * 1 /notify(bot) 周会还有 15 分钟\n"
         "```\n\n"
         "### 通知通道\n\n"
-        "| 通道 | 说明 |\n"
-        "|------|------|\n"
-        "| **FileChannel** | 追加写入 `notification.md`（始终启用） |\n"
-        "| **SystemChannel** | 桌面弹窗（Windows/macOS/Linux） |\n"
-        "| **EmailChannel** | 通过 LiteStartup API 发送邮件 |\n\n"
+        "| 通道 | 短名称 | 说明 |\n"
+        "|------|--------|------|\n"
+        "| **FileChannel** | `file` | 追加写入 `notification.md`（始终启用） |\n"
+        "| **SystemChannel** | `system` | 桌面弹窗（Windows/macOS/Linux） |\n"
+        "| **EmailChannel** | `email` | 通过 LiteStartup API 发送邮件 |\n"
+        "| **BotNotificationChannel** | `bot` | 推送到 Telegram/飞书 Bot |\n\n"
         "### 配置（`agent.yaml` → `notification:`）\n\n"
         "```yaml\n"
         "notification:\n"
@@ -273,6 +283,82 @@ MESSAGES: dict[str, str] = {
         "- `notification.enabled: true`\n"
         "- 邮件通知：需要配置 `litestartup` provider 并具有 `notification` 权限\n"
         "- 桌面通知：需要操作系统支持"
+    ),
+
+    # ── /inbox skill ───────────────────────────────────────────────────────
+    "skill.inbox.description": "查看今日收件箱摘要",
+    "error.inbox_invalid_date": "日期格式无效: {date}（期望 YYYY-MM-DD）",
+    "output.inbox.empty": "{date} 无收件箱消息",
+    "output.inbox.header": "## 收件箱 {date}（{count} 条消息）\n",
+    "output.inbox.table_header": "| 时间 | 预览 |",
+    "output.inbox.summary": "共 {count} 条消息，{first} — {last}",
+    "skill.inbox.help_text": (
+        "### 用法\n\n"
+        "| 命令 | 说明 |\n"
+        "|------|------|\n"
+        "| `/inbox` | 查看今日收件箱摘要 |\n"
+        "| `/inbox YYYY-MM-DD` | 查看指定日期的收件箱 |\n\n"
+        "### 显示内容\n\n"
+        "- 消息数量和时间范围\n"
+        "- 每条消息的时间和首行预览\n\n"
+        "### 工作原理\n\n"
+        "读取 `chatmd/inbox/YYYY-MM-DD.md` 文件（由 Telegram Bot 写入）。\n"
+        "请先执行 `/sync` 拉取远程仓库的最新消息。"
+    ),
+
+    # ── /bind skill ────────────────────────────────────────────────────────
+    "skill.bind.description": "绑定 Git 仓库到 Telegram Bot",
+    "error.bind_no_provider": "LiteStartup provider 未配置，请检查 agent.yaml 中的 ai.providers",
+    "error.bind_missing_token": "请提供 Git 平台的 Access Token。",
+    "error.bind_no_remote": "当前工作空间未检测到 git remote origin，请确认这是一个 Git 仓库",
+    "error.bind_invalid_repo": "仓库地址格式不合法",
+    "error.bind_invalid_platform": "不支持的平台（当前仅支持 Telegram）",
+    "error.bind_already_active": "你已有活跃的绑定，如需重新绑定请先解绑",
+    "error.bind_unauthorized": "认证失败，请检查 agent.yaml 中的 API Key",
+    "error.bind_rate_limited": "请求过于频繁，请等待几分钟后重试",
+    "error.bind_unknown": "绑定失败（未知错误）",
+    "error.bind_server_error": "绑定 API 不可用: {detail}",
+    "output.bind.title": "🔗 Bot 绑定",
+    "output.bind.detected_repo": "检测到仓库: `{repo_url}`",
+    "output.bind.platform_detected": "平台: **{platform}**",
+    "output.bind.token_help_link": "📖 如何创建 Token: {url}",
+    "output.bind.usage_hint": "用法: `/bind <你的access_token>`",
+    "output.bind.repo_line": "仓库: `{repo_url}`",
+    "output.bind.platform_line": "平台: **{platform}**",
+    "output.bind.code_line": "绑定码: **{code}**（{minutes} 分钟有效）",
+    "output.bind.bot_link": "打开 Telegram Bot: [{name}]({link})",
+    "output.bind.bot_name": "Telegram Bot: {name}",
+    "output.bind.waiting": "⏳ 请在 Telegram Bot 中发送绑定码完成关联。",
+    "output.bind.already_active": "⚠️ 你已有活跃的绑定：",
+    "output.bind.current_binding": (
+        "- 平台: **{platform}**\n"
+        "- 仓库: `{repo}`\n"
+        "- 绑定时间: {bound_at}"
+    ),
+    "skill.bind.help_text": (
+        "### 用法\n\n"
+        "```\n"
+        "/bind <git_access_token>\n"
+        "```\n\n"
+        "将 Git 笔记仓库绑定到 Telegram Bot，实现手机端发送语音/文本/图片，"
+        "自动同步到笔记仓库。\n\n"
+        "### 工作原理\n\n"
+        "1. chatmd 自动读取 `git remote origin` 获取仓库地址\n"
+        "2. 调用 LiteStartup API 获取 6 位绑定码\n"
+        "3. 你在 Telegram Bot 中发送绑定码\n"
+        "4. 绑定完成！Bot 消息 → `inbox/` → git sync → 笔记\n\n"
+        "### 获取 Token\n\n"
+        "| 平台 | Token 类型 | 创建地址 |\n"
+        "|------|-----------|----------|\n"
+        "| GitHub | Fine-grained PAT | https://github.com/settings/tokens?type=beta |\n"
+        "| GitLab | Personal Access Token |"
+        " https://gitlab.com/-/user_settings/personal_access_tokens |\n"
+        "| Gitee | 私人令牌 | https://gitee.com/profile/personal_access_tokens |\n\n"
+        "**所需权限**：仅需仓库读写权限，不要授予过多权限。\n\n"
+        "### 示例\n\n"
+        "```\n"
+        "/bind ghp_xxxxxxxxxxxxxxxxxxxx\n"
+        "```"
     ),
 
     # ── /confirm skill ─────────────────────────────────────────────────────
@@ -386,6 +472,7 @@ MESSAGES: dict[str, str] = {
     # ── Agent runtime output (written to chat.md) ──────────────────────
     "agent.command_failed": "❌ 命令执行失败: {error}",
     "agent.unknown_error": "未知错误",
+    "agent.network_placeholder": "⏳ {description}...",
     "agent.async_placeholder": "⏳ {description}中... `#{task_id}`",
     "agent.async_done": "✅ 完成",
     "agent.async_failed_retry": "❌ {error}\n> 输入 `/retry #{task_id}` 重试",
@@ -461,9 +548,9 @@ MESSAGES: dict[str, str] = {
     "service.start_failed": "⚠️ Agent 未能立即启动，请手动运行 `chatmd start --daemon`",
     "service.win_hints": (
         "   管理命令:\n"
-        "     chatmd service status   — 查看服务状态\n"
-        "     chatmd stop             — 停止 Agent\n"
-        "     chatmd service uninstall — 卸载服务"
+        "     chatmd service status    — 查看服务状态\n"
+        "     chatmd service uninstall — 卸载服务\n"
+        "   也可在 services.msc 中管理此服务。"
     ),
     "service.launchd_hints": (
         "   管理命令:\n"
@@ -480,6 +567,38 @@ MESSAGES: dict[str, str] = {
     "service.uninstalled": "✅ 服务已卸载 ({platform}: {path})",
     "service.status_info": "服务 ({platform}): {name} — {status}",
     "service.unsupported_platform": "❌ 不支持的平台: {platform}",
+    "service.pywin32_required": (
+        "❌ Windows 服务需要 pywin32。\n"
+        "   请安装: pip install pywin32"
+    ),
+    "service.pywin32_postinstall_required": (
+        "⚠️  pywin32 安装后初始化尚未完成。\n"
+        "   Windows 服务需要此步骤才能正常运行。\n"
+        "   请以管理员身份运行:\n"
+        "     {command}\n"
+        "   然后重试: chatmd service install"
+    ),
+    "service.win_install_failed": (
+        "❌ Windows 服务安装失败: {error}\n"
+        "   请确保以管理员身份运行。"
+    ),
+    "service.win_uninstall_failed": (
+        "⚠️ Windows 服务卸载失败: {error}"
+    ),
+    "service.no_services_found": "未找到已安装的 ChatMD 服务。",
+    "service.all_services_header": "ChatMD 服务 ({count} 个):",
+    "service.status_all_hint_linux": (
+        "列出所有 ChatMD 服务:\n"
+        "  systemctl --user list-units 'chatmd-*'"
+    ),
+    "service.status_all_hint_macos": (
+        "列出所有 ChatMD 服务:\n"
+        "  launchctl list | grep com.chatmd"
+    ),
+    "service.uninstall_all_win_only": (
+        "--all 目前仅支持 Windows。\n"
+        "请使用平台原生命令管理服务。"
+    ),
 
     # ── mode CLI ───────────────────────────────────────────────────────
     "mode.current_suffix": "触发模式: suffix（标记符: {marker}）",

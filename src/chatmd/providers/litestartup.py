@@ -5,7 +5,8 @@ Centralizes authentication and endpoint routing for all LiteStartup services:
 - Upload:        POST /client/v2/storage/upload
 - Publish:       POST /client/v2/publish
 - Email:         POST /client/v2/emails
-- (future)       subscribe, etc.
+- Bot bind:      POST /api/bot/bind/initiate, GET /api/bot/bind/status
+- Bot notify:    POST /api/bot/notify
 
 Backward compatible with the old ``ai.providers[].api_url`` config format.
 """
@@ -30,6 +31,10 @@ _DEFAULT_ENDPOINTS: dict[str, str] = {
     "upload": "/client/v2/storage/upload",
     "publish": "/client/v2/publish",
     "email": "/client/v2/emails",
+    "bind_initiate": "/api/bot/bind/initiate",
+    "bind_status": "/api/bot/bind/status",
+    "bot_notify": "/api/bot/notify",
+    "bot_sync_complete": "/api/bot/sync-complete",
 }
 
 
@@ -199,6 +204,207 @@ class LiteStartupProvider:
             "success": False,
             "error": data.get("message", "Unknown email error"),
         }
+
+    # -- Bot Bind ------------------------------------------------------------
+
+    def bind_initiate(
+        self,
+        *,
+        repo_url: str,
+        git_token: str,
+        platform: str = "telegram",
+        timezone: str = "",
+    ) -> dict[str, Any]:
+        """Initiate a Bot binding and obtain a 6-digit bind code.
+
+        Calls ``POST /api/bot/bind/initiate``.
+
+        Returns ``{"success": True, "bind_code": "...", ...}`` on success,
+        or ``{"success": False, "error": "...", "code": ...}`` on failure.
+        """
+        url = self.endpoint("bind_initiate")
+        payload: dict[str, str] = {
+            "repo_url": repo_url,
+            "git_token": git_token,
+            "platform": platform,
+        }
+        if timezone:
+            payload["timezone"] = timezone
+
+        logger.debug("Initiating bot bind for platform=%s", platform)
+
+        try:
+            resp = httpx.post(
+                url,
+                json=payload,
+                headers=self.auth_headers(),
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.TimeoutException:
+            return {"success": False, "error": f"Bind timeout ({self._timeout}s)"}
+        except httpx.HTTPStatusError as exc:
+            return self._parse_error_response(exc, "Bind")
+        except httpx.RequestError as exc:
+            return {"success": False, "error": f"Network error: {exc}"}
+
+        if data.get("code") == 0:
+            inner = data.get("data", {}) or {}
+            return {
+                "success": True,
+                "bind_code": inner.get("bind_code", ""),
+                "expires_in": inner.get("expires_in", 300),
+                "bot_username": inner.get("bot_username", ""),
+                "bot_deep_link": inner.get("bot_deep_link", ""),
+            }
+        return {
+            "success": False,
+            "error": data.get("message", "Unknown bind error"),
+            "code": data.get("code"),
+        }
+
+    def bind_status(self) -> dict[str, Any]:
+        """Query current Bot binding status.
+
+        Calls ``GET /api/bot/bind/status``.
+
+        Returns ``{"success": True, "status": "...", ...}`` on success,
+        or ``{"success": False, "error": "..."}`` on failure.
+        """
+        url = self.endpoint("bind_status")
+
+        try:
+            resp = httpx.get(
+                url,
+                headers=self.auth_headers(),
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.TimeoutException:
+            return {"success": False, "error": f"Status timeout ({self._timeout}s)"}
+        except httpx.HTTPStatusError as exc:
+            return self._parse_error_response(exc, "Status")
+        except httpx.RequestError as exc:
+            return {"success": False, "error": f"Network error: {exc}"}
+
+        if data.get("code") == 0:
+            inner = data.get("data", {}) or {}
+            return {
+                "success": True,
+                "status": inner.get("status", "none"),
+                "platform": inner.get("platform"),
+                "repo_url_masked": inner.get("repo_url_masked"),
+                "bound_at": inner.get("bound_at"),
+                "last_sync_at": inner.get("last_sync_at"),
+                "pending_messages": inner.get("pending_messages", 0),
+            }
+        return {
+            "success": False,
+            "error": data.get("message", "Unknown status error"),
+        }
+
+    # -- Bot Notify ----------------------------------------------------------
+
+    def bot_notify(
+        self,
+        *,
+        message: str,
+        priority: str = "normal",
+    ) -> dict[str, Any]:
+        """Push a notification to user's bound Bot platforms.
+
+        Calls ``POST /api/bot/notify``.
+
+        Returns ``{"success": True, "delivered_to": [...]}`` on success,
+        or ``{"success": False, "error": "..."}`` on failure.
+        """
+        url = self.endpoint("bot_notify")
+        payload = {"message": message, "priority": priority}
+
+        logger.debug("Sending bot notification: %s", message[:80])
+
+        try:
+            resp = httpx.post(
+                url,
+                json=payload,
+                headers=self.auth_headers(),
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.TimeoutException:
+            return {"success": False, "error": f"Notify timeout ({self._timeout}s)"}
+        except httpx.HTTPStatusError as exc:
+            return self._parse_error_response(exc, "Notify")
+        except httpx.RequestError as exc:
+            return {"success": False, "error": f"Network error: {exc}"}
+
+        if data.get("success"):
+            return {
+                "success": True,
+                "delivered_to": data.get("delivered_to", []),
+            }
+        return {
+            "success": False,
+            "error": data.get("message", "Unknown notify error"),
+        }
+
+    # -- Bot Sync Complete ---------------------------------------------------
+
+    def bot_sync_complete(self) -> dict[str, Any]:
+        """Notify LiteStartup that a sync cycle completed.
+
+        Calls ``POST /api/bot/sync-complete``.  The server resets
+        ``pending_messages`` to 0 for the authenticated user's binding.
+
+        Returns ``{"success": True}`` on success,
+        or ``{"success": False, "error": "..."}`` on failure.
+        """
+        url = self.endpoint("bot_sync_complete")
+
+        try:
+            resp = httpx.post(
+                url,
+                json={},
+                headers=self.auth_headers(),
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.TimeoutException:
+            return {"success": False, "error": f"Sync-complete timeout ({self._timeout}s)"}
+        except httpx.HTTPStatusError as exc:
+            return self._parse_error_response(exc, "SyncComplete")
+        except httpx.RequestError as exc:
+            return {"success": False, "error": f"Network error: {exc}"}
+
+        return {"success": data.get("success", False)}
+
+    # -- Helpers -------------------------------------------------------------
+
+    @staticmethod
+    def _parse_error_response(
+        exc: httpx.HTTPStatusError,
+        label: str,
+    ) -> dict[str, Any]:
+        """Extract error details from an HTTP error response."""
+        body_msg = ""
+        code = None
+        try:
+            body = exc.response.json()
+            body_msg = body.get("message", "")
+            code = body.get("code")
+        except Exception:
+            pass
+        msg = f"HTTP {exc.response.status_code}"
+        if body_msg:
+            msg += f": {body_msg}"
+        result: dict[str, Any] = {"success": False, "error": msg}
+        if code is not None:
+            result["code"] = code
+        return result
 
     # -- Publish -------------------------------------------------------------
 

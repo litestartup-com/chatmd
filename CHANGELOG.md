@@ -4,6 +4,105 @@
 
 ---
 
+## [0.2.7] — 2026-04-15
+
+Windows Service management + `/notify` channel filtering + multi-service convenience commands.
+
+### Added
+
+- **Windows Service (pywin32)**: proper SCM-managed Windows Service replacing Task Scheduler
+  - `chatmd service install -w <path>` — install per-workspace service with auto-start
+  - Auto-detect `pywin32_postinstall.py` DLL status with clear fix instructions
+  - Idempotent install (existing service auto-removed before reinstall)
+  - Failure recovery: auto-restart on crash (5s delay, max 3/day)
+- **Multi-service convenience commands**:
+  - `chatmd service status` (no `-w`) — list all installed ChatMD services
+  - `chatmd service uninstall --all` — uninstall all ChatMD services at once
+- **`/notify` channel filtering**: target specific notification channels
+  - `/notify(email) msg` — send via email only
+  - `/notify(bot) msg` — send via Bot only
+  - `/notify(email,bot) msg` — send via email + Bot
+  - `/notify msg` — all channels (default, unchanged)
+- `chatmd init` now creates `.chatmd/agent.yaml.example` + `.chatmd/user.yaml.example` (committed to git as safe templates)
+- `.chatmd/agent.yaml` and `.chatmd/user.yaml` added to workspace `.gitignore` (may contain API keys)
+
+### Fixed
+
+- Windows Service Error 1073 (service already exists) — idempotent reinstall
+- Windows Service Error 1053 (DLL / PythonPath / SCM issues) — auto-detection + registry fix
+
+---
+
+## [0.2.6] — 2026-04-14
+
+`/sync` quality improvements + Bot notification pipeline + CI.
+
+### Added
+
+- `/sync` detailed feedback: shows `↓N pulled, ↑N pushed` counts
+- `chatmd upgrade` migration 0.2.4→0.2.5: auto-add `.gitignore` runtime patterns
+- LiteStartup `POST /api/bot/notify` — push notifications to bound Telegram Bot
+- LiteStartup `POST /api/bot/sync-complete` — reset pending messages after sync
+- GitHub Actions CI: Ruff lint + pytest (Python 3.10–3.13, ubuntu/windows/macos)
+
+---
+
+## [0.2.5] — 2026-04-14
+
+Bot binding + reverse notifications + inbox + security fixes.
+
+### Added
+
+- `/bind <token>` — one-step Telegram Bot binding (auto-detect git remote, SSH→HTTPS)
+- `BotNotificationChannel` — push notifications to Telegram Bot
+- `/inbox` — view messages received via Bot
+- Inbox deduplication (monotonic `message_id`)
+- Timezone support for Bot messages (`notification.bot.timezone` config)
+
+### Security
+
+- `strip_url_credentials()` — strip plaintext credentials from repo URLs before API calls
+- `mask_repo_url()` — sanitize repo URLs for display
+
+---
+
+## [0.2.4] — 2026-04-13
+
+Confirmation window + open-source preparation + CLI improvements.
+
+### Added
+
+- Confirmation window for destructive commands (`/sync`, `/upload`, `/new`)
+- `chatmd restart` / `chatmd upgrade -w <path>` CLI commands
+- `CONTRIBUTING.md` for open-source contributors
+
+---
+
+## [0.2.3] — 2026-04-12
+
+Custom Skill plugins + Git Sync Cron + `/notify` notifications.
+
+### Added
+
+- Custom Skill plugin system (YAML declarative + Python dynamic)
+- `/notify` — send notifications through file/desktop/email channels
+- Git Sync as Cron job (`@every 5m /sync`)
+- Cron task management: `/cron list`, `/cron pause`, `/cron resume`
+
+---
+
+## [0.2.2] — 2026-04-10
+
+Cron scheduled tasks + Notification system + `/help` improvements.
+
+### Added
+
+- Cron task engine (crontab syntax + `@every` intervals)
+- Notification system (FileChannel + SystemChannel desktop toast)
+- `/help` grouped by category with rich Markdown output
+
+---
+
 ## [0.2.1] — 2026-04-02
 
 Cross-platform startup experience improvements + configuration audit + code quality fixes.
