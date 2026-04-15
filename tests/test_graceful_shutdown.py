@@ -137,11 +137,17 @@ class TestRunStopSignalFile:
         stop_signal = workspace / ".chatmd" / "stop.signal"
         pid_file.write_text("99999", encoding="utf-8")
 
-        # Mock _is_process_alive so run_stop doesn't bail out early,
-        # and os.kill to avoid actually signaling
+        # First call: alive check before writing signal → True
+        # Subsequent calls (wait loop): → False so it exits quickly
+        alive_calls = iter([True, False])
+
         with (
-            patch("chatmd.commands.agent_lifecycle._is_process_alive", return_value=True),
-            patch("os.kill", side_effect=ProcessLookupError),
+            patch(
+                "chatmd.commands.agent_lifecycle._is_process_alive",
+                side_effect=lambda _pid: next(alive_calls, False),
+            ),
+            patch("os.kill"),  # no-op, avoid actually signaling
+            patch("time.sleep"),  # skip wait
         ):
             run_stop(str(workspace))
 
