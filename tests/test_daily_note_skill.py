@@ -15,26 +15,25 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import pytest
-
 # Add note-kaka skills dir to path so we can import the skill
 _SKILL_PATH = Path(r"C:\Workplace\gitee\note-kaka\.chatmd\skills")
 if str(_SKILL_PATH) not in sys.path:
     sys.path.insert(0, str(_SKILL_PATH))
 
-from chatmd.skills.base import SkillContext, SkillResult
-from daily_note import (
+from daily_note import (  # noqa: E402
     DailyNoteSkill,
+    _find_expired,
     _gen_daily_journal,
     _gen_dudu_log,
     _gen_family_log,
     _gen_weekly_report,
     _gen_youyou_log,
     _is_unedited,
-    _find_expired,
     _week_number,
     _weekday_cn,
-)
+)  # noqa: I001
+
+from chatmd.skills.base import SkillContext  # noqa: E402
 
 
 def _ctx(workspace: Path) -> SkillContext:
@@ -155,14 +154,11 @@ class TestArchive:
         src = tmp_path / "A00-0409-日志.md"
         src.write_text("# My edited journal\nSome real content", encoding="utf-8")
 
-        # Create archive dirs
-        personal_base = tmp_path / "G-日志" / "G01-个人日志"
-        family_base = tmp_path / "G-日志" / "G02-家庭日志"
 
         skill = DailyNoteSkill()
         skill._workspace = tmp_path
         lines, written = skill._do_archive(tmp_path, today)
-        assert any("[MOVED]" in l for l in lines)
+        assert any("[MOVED]" in line for line in lines)
         assert not src.exists()
 
     def test_archive_deletes_unedited(self, tmp_path):
@@ -179,7 +175,7 @@ class TestArchive:
         skill._workspace = tmp_path
         skill._delete_unedited = True
         lines, written = skill._do_archive(tmp_path, today)
-        assert any("[DELETED]" in l for l in lines)
+        assert any("[DELETED]" in line for line in lines)
         assert not src.exists()
 
     def test_archive_keeps_unedited_when_disabled(self, tmp_path):
@@ -194,7 +190,7 @@ class TestArchive:
         skill._delete_unedited = False
         lines, written = skill._do_archive(tmp_path, today)
         # Should move, not delete
-        assert any("[MOVED]" in l for l in lines)
+        assert any("[MOVED]" in line for line in lines)
 
     def test_is_unedited_false_for_edited(self, tmp_path):
         today = datetime(2026, 4, 10)

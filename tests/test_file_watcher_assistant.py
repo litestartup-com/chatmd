@@ -114,7 +114,9 @@ class TestDotfileFiltering:
         # Additionally, on_modified also has an early dotfile check
         assert handler_chat._is_watched(workspace / "chatmd" / ".~chat.md") is False
 
-    def test_dotdir_excluded_generically(self, handler_dot: _ChangeHandler, workspace: Path) -> None:
+    def test_dotdir_excluded_generically(
+        self, handler_dot: _ChangeHandler, workspace: Path,
+    ) -> None:
         """Any dot-prefixed directory should be excluded, not just the explicit set."""
         assert handler_dot._is_watched(workspace / ".hidden_dir" / "notes.md") is False
 

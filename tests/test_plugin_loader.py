@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from chatmd.engine.router import Router
 from chatmd.skills.base import Skill, SkillContext, SkillResult
 from chatmd.skills.hot_reload import SkillReloader
@@ -25,7 +23,6 @@ from chatmd.skills.loader import (
     load_plugin_skills,
     load_skills_config,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -65,7 +62,10 @@ class {name.title()}Skill(Skill):
 
 def _write_yaml_skill(skills_dir: Path, name: str) -> None:
     """Write a minimal YAML skill file to skills_dir."""
-    content = f'name: {name}\ndescription: "{name} yaml skill"\ncategory: custom\ntemplate: "{name}: {{{{input}}}}"\n'
+    content = (
+        f'name: {name}\ndescription: "{name} yaml skill"\n'
+        f'category: custom\ntemplate: "{name}: {{{{input}}}}"\n'
+    )
     (skills_dir / f"{name}.yaml").write_text(content, encoding="utf-8")
 
 
