@@ -51,7 +51,7 @@ class ConfirmSkill(Skill):
 
         return SkillResult(
             success=True,
-            output=t("confirm.confirmed", command=pending.command_text),
+            output=t("confirm.accepted_placeholder"),
         )
 
     def _list_pending(self) -> SkillResult:

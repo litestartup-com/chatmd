@@ -82,6 +82,7 @@ MESSAGES: dict[str, str] = {
     "output.sync.pushed": "↑{count} pushed",
     "output.sync.git_failed": "Git operation failed: {error}",
     "output.sync.git_not_installed": "Git is not installed",
+    "output.sync.accepted_placeholder": "> ✅ /sync accepted",
 
     # ── AI system prompt ───────────────────────────────────────────────
     "ai.language_name": "English",
@@ -499,6 +500,7 @@ MESSAGES: dict[str, str] = {
         " `#{confirm_id}`"
     ),
     "confirm.confirmed": "✅ Confirmed and executed: `{command}`",
+    "confirm.accepted_placeholder": "✅ Confirmed",
     "confirm.cancelled": "❌ Cancelled: `{command}`",
     "confirm.nothing_pending": "No pending commands to confirm.",
     "confirm.list_header": "Pending confirmations:",

@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import threading
 import time
 import winreg
 from pathlib import Path
@@ -105,8 +106,40 @@ class ChatMDService(win32serviceutil.ServiceFramework):
 
         _setup_logging(workspace)
 
-        self._agent = Agent(workspace)
-        self._agent.start()
+        # Startup can block on network-sensitive hooks (notifications/cron restore),
+        # especially during boot. Keep reporting START_PENDING to avoid SCM 1053 timeout.
+        started = threading.Event()
+        startup_error: list[Exception] = []
+
+        def _start_agent() -> None:
+            try:
+                self._agent = Agent(workspace)
+                self._agent.start()
+            except Exception as exc:  # pragma: no cover - surfaced below
+                startup_error.append(exc)
+            finally:
+                started.set()
+
+        thread = threading.Thread(
+            target=_start_agent, name=f"{self._real_svc_name}-startup", daemon=True,
+        )
+        thread.start()
+
+        while not started.wait(timeout=2.0):
+            self.ReportServiceStatus(
+                win32service.SERVICE_START_PENDING,
+                waitHint=10000,
+            )
+
+            # SCM requested stop while startup is still in progress.
+            rc = win32event.WaitForSingleObject(self._stop_event, 0)
+            if rc == win32event.WAIT_OBJECT_0:
+                return
+
+        if startup_error:
+            raise startup_error[0]
+
+        self.ReportServiceStatus(win32service.SERVICE_RUNNING)
 
         # Block until SCM signals stop
         while True:
@@ -268,6 +301,8 @@ def install_service(service_name: str, workspace: Path) -> None:
 
     # Configure failure recovery: restart after 5 seconds
     _configure_failure_recovery(service_name)
+    # Delay auto-start at boot to avoid early-network / startup races.
+    _configure_delayed_auto_start(service_name)
 
     # Start the service
     win32serviceutil.StartService(service_name)
@@ -344,5 +379,14 @@ def _configure_failure_recovery(service_name: str) -> None:
             "reset=", "86400",
             "actions=", "restart/5000/restart/5000/restart/5000",
         ],
+        capture_output=True, check=False,
+    )
+
+
+def _configure_delayed_auto_start(service_name: str) -> None:
+    """Set service start mode to delayed-auto for more reliable boot startup."""
+    import subprocess
+    subprocess.run(
+        ["sc", "config", service_name, "start=", "delayed-auto"],
         capture_output=True, check=False,
     )

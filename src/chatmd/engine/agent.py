@@ -318,7 +318,21 @@ class Agent:
         # Sync skills: execute immediately
         # For network-requiring skills, show ⏳ placeholder first
         raw_text_for_replace = cmd.raw_text
-        if getattr(skill, "requires_network", False):
+        if skill.name == "confirm":
+            confirm_placeholder = t("confirm.accepted_placeholder")
+            self._write_back(
+                filepath, cmd.source_line, end_line, cmd.raw_text, confirm_placeholder,
+            )
+            raw_text_for_replace = confirm_placeholder
+            end_line = 0
+        elif skill.name == "sync":
+            sync_placeholder = t("output.sync.accepted_placeholder")
+            self._write_back(
+                filepath, cmd.source_line, end_line, cmd.raw_text, sync_placeholder,
+            )
+            raw_text_for_replace = sync_placeholder
+            end_line = 0
+        elif getattr(skill, "requires_network", False):
             desc = t(f"skill.{skill.name}.description")
             placeholder = f"> {t('agent.network_placeholder', description=desc)}"
             self._write_back(filepath, cmd.source_line, end_line, cmd.raw_text, placeholder)
@@ -372,6 +386,13 @@ class Agent:
         filepath: Path, end_line: int,
     ) -> None:
         """Execute a command after user confirmed via /confirm."""
+        if skill.name == "sync":
+            self._file_writer.write_result_range(
+                filepath,
+                resolved_cmd.source_line,
+                resolved_cmd.source_line,
+                t("output.sync.accepted_placeholder"),
+            )
         t0 = time.monotonic()
         try:
             result = skill.execute(resolved_cmd.input_text, resolved_cmd.args, context)
@@ -379,9 +400,27 @@ class Agent:
         except Exception as exc:
             logger.exception("Confirmed skill '%s' failed", skill.name)
             error_text = f"> {t('agent.command_failed', error=exc)}"
-            self._file_writer.append_line(filepath, error_text)
+            if skill.name == "sync":
+                self._file_writer.write_result_range(
+                    filepath,
+                    resolved_cmd.source_line,
+                    resolved_cmd.source_line,
+                    error_text,
+                )
+            else:
+                self._file_writer.append_line(filepath, error_text)
             return
         elapsed = time.monotonic() - t0
+
+        if skill.name == "sync":
+            if not result.success:
+                self._file_writer.write_result_range(
+                    filepath,
+                    resolved_cmd.source_line,
+                    resolved_cmd.source_line,
+                    f"> ❌ {result.error or t('agent.unknown_error')}",
+                )
+            return
 
         # Append result to file (the original command line was already replaced
         # by the confirmation marker, so we append rather than replace)
@@ -538,6 +577,8 @@ class Agent:
     ) -> None:
         """Write a sync skill result back to file."""
         if result.success:
+            if skill_name == "sync":
+                return
             output = self._format_output(
                 result.output, skill_name, elapsed, category,
                 input_text=input_text,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from chatmd.engine.confirm import ConfirmationWindow
+from chatmd.i18n import t
 from chatmd.skills.base import SkillContext
 from chatmd.skills.confirm import ConfirmSkill
 
@@ -216,7 +217,7 @@ class TestConfirmSkillExecute:
         result = skill.execute("", {}, _make_context())
         assert result.success
         assert called == [True]
-        assert "/sync" in result.output
+        assert result.output == t("confirm.accepted_placeholder")
 
     def test_confirm_by_id(self):
         cw = ConfirmationWindow(enabled=True, commands=["/sync"])
