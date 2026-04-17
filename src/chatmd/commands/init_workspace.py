@@ -30,7 +30,7 @@ def _build_welcome_chat_md() -> str:
     )
 
 _DEFAULT_AGENT_YAML: dict = {
-    "version": "0.2.7",
+    "version": "0.2.8",
     "ai": {
         "providers": [
             {

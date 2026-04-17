@@ -4,6 +4,27 @@
 
 ---
 
+## [0.2.8] — 2026-04-17
+
+Agent initialization reliability + `/sync` UX polish.
+
+### Added
+
+- **Delayed/threaded agent startup**: agent bootstrap moved off the main service thread, preventing Windows Service timeouts on slow disks and flaky networks.
+- **`/sync` accepted placeholder**: `✅ /sync accepted` shown immediately while the background sync runs.
+- **Confirm accepted placeholder**: `✅ Confirmed` placeholder rendered on confirmation before the underlying command executes.
+- New i18n keys: `output.sync.accepted_placeholder`, `confirm.accepted_placeholder` (en + zh-CN).
+
+### Changed
+
+- `infra/git_sync.py` internal refactor for clearer placeholder lifecycle and error surfaces.
+
+### Fixed
+
+- Race conditions in Windows Service startup when the workspace agent took longer than SCM's start timeout.
+
+---
+
 ## [0.2.7] — 2026-04-15
 
 Windows Service management + `/notify` channel filtering + multi-service convenience commands.
