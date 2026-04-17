@@ -4,6 +4,30 @@
 
 ---
 
+## [0.2.9] — 2026-04-18
+
+`/bind` diagnostics + audit log hygiene. Includes everything from the unreleased 0.2.8 changes (Windows Service startup reliability + `/sync` & `confirm` placeholders).
+
+### Fixed
+
+- **`/bind` now surfaces the actual server response** when the error code is not in the known code map — you'll see `Bind failed (unknown error) [code=...] raw=...` instead of just `Unknown error`.
+- **Server error messages include the numeric code** (e.g. `Bind API not available: ... [code=5000]`) for easier diagnosis.
+- **`bind_status()` HTTP failures** now emit a WARNING log before the skill continues to `bind_initiate`, so silent state misreads become visible.
+
+### Changed
+
+- `_already_bound` and `_missing_token_help` in the `/bind` skill are now marked `informational=True`. They are legitimate control flow (not errors) and are no longer audited as `status=fail` in the kernel gate log.
+- `SkillResult.informational: bool = False` is now part of the public skill contract.
+
+### Added (from 0.2.8, unreleased on PyPI)
+
+- **Delayed/threaded agent startup**: agent bootstrap moved off the main service thread, preventing Windows Service timeouts on slow disks and flaky networks.
+- **`/sync` accepted placeholder**: `✅ /sync accepted` shown immediately while the background sync runs.
+- **Confirm accepted placeholder**: `✅ Confirmed` placeholder rendered on confirmation before the underlying command executes.
+- New i18n keys: `output.sync.accepted_placeholder`, `confirm.accepted_placeholder` (en + zh-CN).
+
+---
+
 ## [0.2.8] — 2026-04-17
 
 Agent initialization reliability + `/sync` UX polish.

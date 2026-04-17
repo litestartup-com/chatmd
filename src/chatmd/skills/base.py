@@ -14,12 +14,23 @@ if TYPE_CHECKING:
 
 @dataclass
 class SkillResult:
-    """Result returned by a Skill execution."""
+    """Result returned by a Skill execution.
+
+    Fields:
+        success: True if the skill completed its intended operation.
+        output: Text to write back to the markdown file.
+        error: Error message when success=False AND the failure is a real error.
+        metadata: Optional structured data (bind_code, task_id, etc.).
+        informational: True when success=False is used purely as control flow
+            (e.g. "already bound", "missing token" help) and should not be
+            audited as a failure. Defaults to False.
+    """
 
     success: bool
     output: str
     error: str | None = None
     metadata: dict | None = None
+    informational: bool = False
 
 
 @dataclass

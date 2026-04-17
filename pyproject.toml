@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chatmd"
-version = "0.2.8"
+version = "0.2.9"
 description = "A local-first, text-driven personal AI Agent engine"
 readme = "README.md"
 license = "MIT"

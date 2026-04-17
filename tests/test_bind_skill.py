@@ -234,3 +234,99 @@ class TestBindSkill:
 
         assert result.success is True
         provider.bind_initiate.assert_called_once()
+
+    def test_already_bound_is_informational(
+        self, context: SkillContext, provider: MagicMock,
+    ) -> None:
+        """'Already bound' must be marked informational, not a real failure."""
+        provider.bind_status.return_value = {
+            "success": True,
+            "status": "active",
+            "platform": "telegram",
+            "repo_url_masked": "https://github.com/u***/r***.git",
+            "bound_at": "2026-04-14T10:30:00",
+        }
+        skill = BindSkill(provider=provider)
+        with patch(
+            "chatmd.skills.bind.get_git_remote_url",
+            return_value="https://github.com/user/repo.git",
+        ):
+            result = skill.execute("ghp_xxx", {}, context)
+
+        assert result.success is False
+        assert result.informational is True
+        assert result.error is None  # informational carries no error
+
+    def test_missing_token_help_is_informational(
+        self, context: SkillContext, provider: MagicMock,
+    ) -> None:
+        """'Missing token' help must be marked informational, not a real failure."""
+        skill = BindSkill(provider=provider)
+        with patch(
+            "chatmd.skills.bind.get_git_remote_url",
+            return_value="https://github.com/user/repo.git",
+        ):
+            result = skill.execute("", {}, context)
+        assert result.success is False
+        assert result.informational is True
+        assert result.error is None
+
+    def test_unknown_error_exposes_code_and_raw(
+        self, context: SkillContext, provider: MagicMock,
+    ) -> None:
+        """Unknown bind error must expose server code + raw response for diagnosis."""
+        provider.bind_initiate.return_value = {
+            "success": False,
+            "code": 9999,
+            # No 'error' field — exercises the 'unknown' fallback path
+        }
+        skill = BindSkill(provider=provider)
+        with patch(
+            "chatmd.skills.bind.get_git_remote_url",
+            return_value="https://github.com/user/repo.git",
+        ):
+            result = skill.execute("ghp_xxx", {}, context)
+
+        assert result.success is False
+        assert result.informational is False  # this IS a real error
+        assert result.error is not None
+        # Diagnostic details must be surfaced
+        assert "9999" in result.error
+        assert "raw=" in result.error
+
+    def test_unknown_error_without_code_still_useful(
+        self, context: SkillContext, provider: MagicMock,
+    ) -> None:
+        """Empty server response still gives a diagnosable message."""
+        provider.bind_initiate.return_value = {"success": False}
+        skill = BindSkill(provider=provider)
+        with patch(
+            "chatmd.skills.bind.get_git_remote_url",
+            return_value="https://github.com/user/repo.git",
+        ):
+            result = skill.execute("ghp_xxx", {}, context)
+
+        assert result.success is False
+        assert result.error is not None
+        assert "n/a" in result.error  # code=n/a shown when not provided
+
+    def test_server_error_includes_code_suffix(
+        self, context: SkillContext, provider: MagicMock,
+    ) -> None:
+        """Server error with code but outside code_map must show the code for debugging."""
+        provider.bind_initiate.return_value = {
+            "success": False,
+            "error": "Something broke on the server",
+            "code": 5000,
+        }
+        skill = BindSkill(provider=provider)
+        with patch(
+            "chatmd.skills.bind.get_git_remote_url",
+            return_value="https://github.com/user/repo.git",
+        ):
+            result = skill.execute("ghp_xxx", {}, context)
+
+        assert result.success is False
+        assert result.error is not None
+        assert "5000" in result.error
+        assert "Something broke" in result.error

@@ -331,7 +331,7 @@ MESSAGES: dict[str, str] = {
     ),
     "error.bind_unauthorized": "Authentication failed. Check your API key in agent.yaml",
     "error.bind_rate_limited": "Too many requests. Please wait a few minutes and try again",
-    "error.bind_unknown": "Bind failed (unknown error)",
+    "error.bind_unknown": "Bind failed (unknown error) [code={code}] raw={raw}",
     "error.bind_server_error": "Bind API not available: {detail}",
     "output.bind.title": "🔗 Bot Binding",
     "output.bind.detected_repo": "Detected repo: `{repo_url}`",

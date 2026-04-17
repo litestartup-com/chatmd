@@ -84,6 +84,11 @@ class KernelGate:
                 "AUDIT skill=%s category=%s status=ok",
                 skill.name, skill.category,
             )
+        elif result.informational:
+            logger.info(
+                "AUDIT skill=%s category=%s status=info",
+                skill.name, skill.category,
+            )
         else:
             logger.warning(
                 "AUDIT skill=%s category=%s status=fail error=%s",

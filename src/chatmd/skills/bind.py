@@ -94,7 +94,12 @@ class BindSkill(Skill):
         # -- Check current binding status ------------------------------------
 
         status_result = self._provider.bind_status()
-        if status_result.get("success") and status_result.get("status") == "active":
+        if not status_result.get("success"):
+            logger.warning(
+                "bind_status() failed, proceeding to initiate anyway: %s",
+                status_result.get("error", "unknown"),
+            )
+        elif status_result.get("status") == "active":
             return self._already_bound(status_result)
 
         # -- Call bind/initiate ----------------------------------------------
@@ -136,7 +141,7 @@ class BindSkill(Skill):
         lines.append("")
         lines.append(t("output.bind.usage_hint"))
 
-        return SkillResult(success=False, output="\n".join(lines))
+        return SkillResult(success=False, output="\n".join(lines), informational=True)
 
     def _already_bound(self, status: dict) -> SkillResult:
         """Return output when user already has an active binding."""
@@ -150,7 +155,7 @@ class BindSkill(Skill):
                 bound_at=status.get("bound_at", "?"),
             ),
         ]
-        return SkillResult(success=False, output="\n".join(lines))
+        return SkillResult(success=False, output="\n".join(lines), informational=True)
 
     def _bind_error(self, result: dict) -> SkillResult:
         """Return output for a failed bind attempt."""
@@ -170,9 +175,17 @@ class BindSkill(Skill):
             user_msg = code_map[error_code]
         elif error_msg:
             # Show server error detail (e.g. Network error, HTTP 404, timeout)
-            user_msg = t("error.bind_server_error", detail=error_msg)
+            code_suffix = f" [code={error_code}]" if error_code else ""
+            user_msg = t("error.bind_server_error", detail=error_msg) + code_suffix
         else:
-            user_msg = t("error.bind_unknown")
+            # Neither a known code nor a message — expose whatever we have
+            # so the user can diagnose instead of seeing "Unknown error".
+            user_msg = t(
+                "error.bind_unknown",
+                code=error_code if error_code is not None else "n/a",
+                raw=str(result) if result else "n/a",
+            )
+            logger.warning("Bind failed with unmapped response: %r", result)
 
         return SkillResult(success=False, output="", error=user_msg)
 

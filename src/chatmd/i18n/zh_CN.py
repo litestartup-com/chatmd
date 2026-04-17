@@ -317,7 +317,7 @@ MESSAGES: dict[str, str] = {
     "error.bind_already_active": "你已有活跃的绑定，如需重新绑定请先解绑",
     "error.bind_unauthorized": "认证失败，请检查 agent.yaml 中的 API Key",
     "error.bind_rate_limited": "请求过于频繁，请等待几分钟后重试",
-    "error.bind_unknown": "绑定失败（未知错误）",
+    "error.bind_unknown": "绑定失败（未知错误）[code={code}] raw={raw}",
     "error.bind_server_error": "绑定 API 不可用: {detail}",
     "output.bind.title": "🔗 Bot 绑定",
     "output.bind.detected_repo": "检测到仓库: `{repo_url}`",
