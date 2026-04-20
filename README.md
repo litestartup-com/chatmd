@@ -285,6 +285,10 @@ chatmd mode save               # Switch to save mode (default, manual save)
 chatmd service install         # Register as system service (auto-start on boot)
 chatmd service uninstall       # Unregister system service
 chatmd service status          # Check system service status
+chatmd service start           # Start the installed service
+chatmd service stop            # Stop the service (without uninstalling)
+chatmd service restart         # Restart the service
+chatmd doctor                  # Diagnose environment / workspace / service / provider / git
 chatmd upgrade [-w <workspace>] --full  # Ensure workspace structure is complete
 chatmd --version               # Show version
 ```

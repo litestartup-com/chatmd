@@ -587,6 +587,30 @@ MESSAGES: dict[str, str] = {
     "service.win_uninstall_failed": (
         "⚠️ Windows 服务卸载失败: {error}"
     ),
+    "service.started": "✅ 服务已启动 ({platform}: {name})",
+    "service.stopped": "✅ 服务已停止 ({platform}: {name})",
+    "service.start_service_failed": (
+        "❌ 服务启动失败: {error}\n"
+        "   提示：请先执行 `chatmd service install`，或检查权限。"
+    ),
+    "service.stop_service_failed": (
+        "⚠️ 服务停止失败: {error}\n"
+        "   提示：服务可能已经是停止状态。"
+    ),
+    # ── doctor CLI ──────────────────────────────────────────────────────
+    "doctor.header": "🔍 ChatMD Doctor — 工作区: {workspace}",
+    "doctor.summary": (
+        "汇总: ✅ {ok} 项  ⚠️ {warn} 项警告  ❌ {error} 项错误  ⏭️ {skip} 项跳过"
+    ),
+    "doctor.fix_hint_label": "修复建议:",
+    "doctor.skipped_no_network": "已跳过（--no-network）",
+    "doctor.check_crashed": "检查异常: {error}",
+    "doctor.category.environment": "Python 与依赖",
+    "doctor.category.workspace": "工作区与配置",
+    "doctor.category.service": "服务 ⇄ PID 一致性",
+    "doctor.category.provider": "AI Provider",
+    "doctor.category.git": "Git 仓库",
+
     "service.no_services_found": "未找到已安装的 ChatMD 服务。",
     "service.all_services_header": "ChatMD 服务 ({count} 个):",
     "service.status_all_hint_linux": (

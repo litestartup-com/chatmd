@@ -4,6 +4,31 @@
 
 ---
 
+## [0.2.10] — 2026-04-20
+
+Windows Service status consistency fix, service lifecycle commands, and `chatmd doctor` diagnostic CLI.
+
+### Fixed
+
+- **`chatmd status` vs Windows Service inconsistency**: the SCM could show the service as stopped while `chatmd status` still reported the Agent as running and chat commands became unresponsive.
+  - **Root cause**: a stale `.chatmd/agent.pid` left behind by a crashed/killed agent; the OS recycled that PID to an unrelated process (e.g. `svchost`) and `OpenProcess` treated the file as live.
+  - **Fix**: `agent.pid` now stores `<pid>\n<create_time>`; liveness checks verify the creation time matches. Legacy one-line pid files are automatically treated as stale and cleaned up — no manual intervention needed. Implemented via a new cross-platform `chatmd.infra.pid_utils` module (`GetProcessTimes` on Windows, `/proc/<pid>/stat` on Linux, `ps -o lstart=` on macOS).
+
+### Added
+
+- **`chatmd service start / stop / restart`** — cross-platform service lifecycle commands. Previously `chatmd service` only supported `install / uninstall / status`; you now have a proper start/stop/restart triplet on Windows (SCM), Linux (systemd --user) and macOS (launchctl).
+- **`chatmd doctor`** — zero-side-effect environment diagnostic CLI with 11 built-in checks across 5 categories:
+  - `environment` — Python version (≥ 3.10) + required dependencies (click, watchdog, pyyaml, httpx, pywin32 on Windows)
+  - `workspace` — `.chatmd/` structure, YAML syntax (with line numbers on error), skill plugin declarations
+  - `service` — `agent.pid` format and **Service ⇄ PID consistency** (directly closes the loop on the bug above; covers all SCM / systemd / launchd ↔ pid combinations)
+  - `provider` — AI provider configuration sanity + optional reachability check (`--no-network` to skip)
+  - `git` — working tree cleanliness, `origin` remote (and credential-leak scan), unpushed commits
+  - Options: `-w <workspace>`, `-c <category>` (repeatable filter), `-v` (verbose + opt-in smoke tests), `--no-network`
+  - Stable exit codes for CI: `0` all OK · `1` warnings only · `2` at least one error
+  - API keys are masked (`xxxx…(N chars)`) in all output
+
+---
+
 ## [0.2.9] — 2026-04-18
 
 `/bind` diagnostics + audit log hygiene. Includes everything from the unreleased 0.2.8 changes (Windows Service startup reliability + `/sync` & `confirm` placeholders).

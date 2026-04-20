@@ -132,16 +132,21 @@ class TestRunStopSignalFile:
     def test_run_stop_writes_signal_file(self, workspace: Path) -> None:
         """run_stop should create .chatmd/stop.signal."""
         from chatmd.commands.agent_lifecycle import run_stop
+        from chatmd.infra.pid_utils import write_pid_file
 
         pid_file = workspace / ".chatmd" / "agent.pid"
         stop_signal = workspace / ".chatmd" / "stop.signal"
-        pid_file.write_text("99999", encoding="utf-8")
+        # Write a PID file in the new format (pid + create_time) so the
+        # agent-alive check would succeed if we did not mock it.
+        write_pid_file(pid_file, pid=99999)
 
-        # First call: alive check before writing signal → True
-        # Subsequent calls (wait loop): → False so it exits quickly
         alive_calls = iter([True, False])
 
         with (
+            patch(
+                "chatmd.commands.agent_lifecycle._is_agent_alive",
+                return_value=True,
+            ),
             patch(
                 "chatmd.commands.agent_lifecycle._is_process_alive",
                 side_effect=lambda _pid: next(alive_calls, False),
@@ -206,10 +211,11 @@ class TestDaemonMode:
         import os
 
         from chatmd.commands.agent_lifecycle import run_start_daemon
+        from chatmd.infra.pid_utils import write_pid_file
 
         pid_file = workspace / ".chatmd" / "agent.pid"
-        # Write our own PID so os.kill(pid, 0) succeeds
-        pid_file.write_text(str(os.getpid()), encoding="utf-8")
+        # Write our own PID + create-time so the agent-alive check passes
+        write_pid_file(pid_file, pid=os.getpid())
         run_start_daemon(str(workspace))
         captured = capsys.readouterr()
         assert "already running" in captured.out.lower() or "已在运行" in captured.out
@@ -311,25 +317,28 @@ class TestRestart:
         """restart when agent is running should stop then start daemon."""
         from chatmd.commands.agent_lifecycle import run_restart
 
-        # Simulate a running PID
+        # Simulate a stale PID (legacy format, no create-time line)
         pid_file = workspace / ".chatmd" / "agent.pid"
         pid_file.write_text("99999", encoding="utf-8")
 
         with (
-            patch("chatmd.commands.agent_lifecycle._is_process_alive", return_value=False),
+            patch("chatmd.commands.agent_lifecycle._is_agent_alive", return_value=False),
             patch("chatmd.commands.agent_lifecycle.run_start_daemon") as mock_daemon,
         ):
             run_restart(str(workspace))
 
-        # PID 99999 is not alive, so it cleans up and starts fresh
+        # Legacy pid file is treated as stale → clean up and start fresh
         mock_daemon.assert_called_once_with(str(workspace))
 
     def test_restart_stops_alive_process(self, workspace: Path, capsys) -> None:
         """restart should call run_stop when process is alive."""
         from chatmd.commands.agent_lifecycle import run_restart
+        from chatmd.infra.pid_utils import write_pid_file
 
         pid_file = workspace / ".chatmd" / "agent.pid"
-        pid_file.write_text("12345", encoding="utf-8")
+        # Use the new pid-file format so _is_agent_alive's ctime check can
+        # be exercised end-to-end via the mock below.
+        write_pid_file(pid_file, pid=12345)
 
         call_count = [0]
 
@@ -339,6 +348,7 @@ class TestRestart:
             return call_count[0] <= 2
 
         with (
+            patch("chatmd.commands.agent_lifecycle._is_agent_alive", return_value=True),
             patch("chatmd.commands.agent_lifecycle._is_process_alive", side_effect=fake_alive),
             patch("chatmd.commands.agent_lifecycle.run_stop") as mock_stop,
             patch("chatmd.commands.agent_lifecycle.run_start_daemon") as mock_daemon,

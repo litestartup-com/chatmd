@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import threading
 import time
@@ -37,6 +36,12 @@ from chatmd.infra.notification import (
     FileChannel,
     NotificationManager,
     SystemChannel,
+)
+from chatmd.infra.pid_utils import (
+    is_agent_alive,
+    is_process_alive,
+    read_pid_file,
+    write_pid_file,
 )
 from chatmd.providers.base import AIProvider
 from chatmd.providers.litestartup import LiteStartupProvider
@@ -1200,8 +1205,12 @@ class Agent:
             pass
 
     def _write_pid(self) -> None:
-        """Write current PID to .chatmd/agent.pid."""
-        self._pid_file.write_text(str(os.getpid()), encoding="utf-8")
+        """Write current PID + creation time to .chatmd/agent.pid.
+
+        The creation time guards against PID reuse when the Agent crashes
+        or is stopped ungracefully (see ``chatmd.infra.pid_utils``).
+        """
+        write_pid_file(self._pid_file)
 
     def _remove_pid(self) -> None:
         """Remove the PID file."""
@@ -1211,44 +1220,30 @@ class Agent:
             pass
 
     def _check_no_other_instance(self) -> None:
-        """Check if another Agent is already running for this workspace."""
+        """Check if another Agent is already running for this workspace.
+
+        Uses PID + creation-time verification so that a recycled PID or a
+        legacy PID file without a stored creation time does not trigger a
+        false positive.
+        """
         if not self._pid_file.exists():
             return
 
-        try:
-            pid = int(self._pid_file.read_text(encoding="utf-8").strip())
-        except (ValueError, OSError):
-            self._remove_pid()
-            return
-
-        if self._is_process_alive(pid):
+        if is_agent_alive(self._pid_file):
+            parsed = read_pid_file(self._pid_file)
+            pid = parsed[0] if parsed else "?"
             raise AgentError(
                 f"Another Agent (PID {pid}) is already running.\n"
                 "Use `chatmd stop` first."
             )
-        # Stale PID file — remove it
+        # Stale or legacy PID file — remove it so this start can proceed
         self._remove_pid()
 
     @staticmethod
     def _is_process_alive(pid: int) -> bool:
-        """Check whether a process with *pid* is currently running (cross-platform)."""
-        import sys
+        """Return True when *pid* is live (legacy helper, no ctime check).
 
-        if sys.platform == "win32":
-            import ctypes
-            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-            query_limited = 0x1000
-            handle = kernel32.OpenProcess(query_limited, False, pid)
-            if handle:
-                kernel32.CloseHandle(handle)
-                return True
-            return False
-
-        # Unix: signal 0 checks existence without sending a real signal
-        try:
-            os.kill(pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True  # Process exists but we lack permission
+        Prefer :func:`chatmd.infra.pid_utils.is_agent_alive` which verifies
+        the process creation time and thus avoids PID-reuse false positives.
+        """
+        return is_process_alive(pid)

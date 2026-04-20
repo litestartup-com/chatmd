@@ -11,28 +11,32 @@ import click
 
 from chatmd.exceptions import AgentError
 from chatmd.i18n import t
+from chatmd.infra.pid_utils import (
+    is_agent_alive,
+    is_process_alive,
+    read_pid_file,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def _is_process_alive(pid: int) -> bool:
-    """Check whether a process with *pid* is currently running (cross-platform)."""
-    if sys.platform == "win32":
-        import ctypes
-        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-        query_limited = 0x1000
-        handle = kernel32.OpenProcess(query_limited, False, pid)
-        if handle:
-            kernel32.CloseHandle(handle)
-            return True
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
+    """Legacy PID-only liveness check (cross-platform).
+
+    Prefer :func:`_is_agent_alive` which also verifies the process creation
+    time and thus avoids PID-reuse false positives.
+    """
+    return is_process_alive(pid)
+
+
+def _is_agent_alive(pid_file: Path) -> bool:
+    """Return True when *pid_file* belongs to a live ChatMD Agent process.
+
+    See :mod:`chatmd.infra.pid_utils` for the create-time verification that
+    protects against PID reuse (stopped Windows Service leaving behind a
+    stale ``agent.pid`` whose PID was later re-assigned by the OS).
+    """
+    return is_agent_alive(pid_file)
 
 
 def _read_log_level(workspace: Path) -> int:
@@ -123,17 +127,16 @@ def run_start_daemon(workspace_str: str) -> None:
         click.echo(t("cli.run_init_first"))
         sys.exit(1)
 
-    # Check for existing instance via PID file
+    # Check for existing instance via PID file (with create-time verification)
     pid_file = chatmd_dir / "agent.pid"
     if pid_file.exists():
-        try:
-            pid = int(pid_file.read_text(encoding="utf-8").strip())
-            if _is_process_alive(pid):
-                click.echo(t("cli.daemon_already_running", pid=pid))
-                return
-            pid_file.unlink(missing_ok=True)
-        except (ValueError, OSError):
-            pid_file.unlink(missing_ok=True)
+        if _is_agent_alive(pid_file):
+            parsed = read_pid_file(pid_file)
+            pid = parsed[0] if parsed else 0
+            click.echo(t("cli.daemon_already_running", pid=pid))
+            return
+        # Stale, legacy, or recycled PID — remove so this daemon can start
+        pid_file.unlink(missing_ok=True)
 
     # Build the command: re-invoke chatmd start (without --daemon) for this workspace
     cmd = [sys.executable, "-m", "chatmd", "start", "-w", str(workspace)]
@@ -202,15 +205,18 @@ def run_stop(workspace_str: str) -> None:
         click.echo(t("cli.no_running_agent"))
         return
 
-    try:
-        pid = int(pid_file.read_text(encoding="utf-8").strip())
-    except (ValueError, OSError):
+    parsed = read_pid_file(pid_file)
+    if parsed is None:
         click.echo(t("cli.pid_corrupted"))
         pid_file.unlink(missing_ok=True)
         return
 
-    # Verify the process is actually running before sending stop signal
-    if not _is_process_alive(pid):
+    pid = parsed[0]
+
+    # Verify the agent is actually running (PID + create-time match) before
+    # sending the stop signal.  This catches stale or recycled PIDs that
+    # would otherwise cause the user to chase a non-existent process.
+    if not _is_agent_alive(pid_file):
         click.echo(t("cli.process_not_found"))
         pid_file.unlink(missing_ok=True)
         stop_signal.unlink(missing_ok=True)
@@ -266,20 +272,21 @@ def run_restart(workspace_str: str) -> None:
     was_running = False
 
     if pid_file.exists():
-        try:
-            pid = int(pid_file.read_text(encoding="utf-8").strip())
-            if _is_process_alive(pid):
-                was_running = True
-                click.echo(t("cli.restart_stopping", pid=pid))
-                run_stop(workspace_str)
+        if _is_agent_alive(pid_file):
+            parsed = read_pid_file(pid_file)
+            pid = parsed[0] if parsed else 0
+            was_running = True
+            click.echo(t("cli.restart_stopping", pid=pid))
+            run_stop(workspace_str)
 
-                # Wait for process to fully exit (up to 5s)
-                import time
-                for _ in range(10):
-                    if not _is_process_alive(pid):
-                        break
-                    time.sleep(0.5)
-        except (ValueError, OSError):
+            # Wait for process to fully exit (up to 5s)
+            import time
+            for _ in range(10):
+                if not _is_process_alive(pid):
+                    break
+                time.sleep(0.5)
+        else:
+            # Stale, legacy, or recycled PID file — clean it up
             pid_file.unlink(missing_ok=True)
 
     if was_running:
@@ -304,14 +311,18 @@ def run_status(workspace_str: str) -> None:
         click.echo(t("cli.agent_not_running"))
         return
 
-    try:
-        pid = int(pid_file.read_text(encoding="utf-8").strip())
-    except (ValueError, OSError):
+    parsed = read_pid_file(pid_file)
+    if parsed is None:
         click.echo(t("cli.agent_not_running_stale"))
         pid_file.unlink(missing_ok=True)
         return
 
-    if _is_process_alive(pid):
+    pid = parsed[0]
+
+    # Use PID + create-time verification to avoid false positives when the
+    # OS has recycled the stored PID (e.g. after a Windows Service crash or
+    # hard-kill that left agent.pid on disk).
+    if _is_agent_alive(pid_file):
         click.echo(t("cli.agent_running", pid=pid))
     else:
         click.echo(t("cli.agent_not_running_stale"))

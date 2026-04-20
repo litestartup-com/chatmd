@@ -235,6 +235,86 @@ def _status_windows(workspace: Path) -> str:
     return query_service_status(svc_name)
 
 
+def _start_windows(workspace: Path) -> str:
+    """Start an installed Windows Service via SCM."""
+    from chatmd.commands.win_service import start_service
+
+    svc_name = _win_service_name(workspace)
+    start_service(svc_name)
+    return svc_name
+
+
+def _stop_windows(workspace: Path) -> str:
+    """Stop a running Windows Service via SCM."""
+    from chatmd.commands.win_service import stop_service
+
+    svc_name = _win_service_name(workspace)
+    stop_service(svc_name)
+    return svc_name
+
+
+def _start_systemd(workspace: Path) -> str:
+    """Start an installed systemd user service."""
+    svc = _service_name(workspace)
+    subprocess.run(
+        ["systemctl", "--user", "start", f"{svc}.service"], check=False,
+    )
+    return svc
+
+
+def _stop_systemd(workspace: Path) -> str:
+    """Stop a running systemd user service."""
+    svc = _service_name(workspace)
+    subprocess.run(
+        ["systemctl", "--user", "stop", f"{svc}.service"], check=False,
+    )
+    return svc
+
+
+def _start_launchd(workspace: Path) -> str:
+    """Start an installed launchd user agent.
+
+    ``launchctl load`` is used here so the behaviour matches ``install``'s
+    load step; if the plist is already loaded we fall back to ``kickstart``
+    which asks launchd to (re)spawn the service job.
+    """
+    plist_path = _launchd_plist_path(workspace)
+    label = f"com.chatmd.{_workspace_hash(workspace)}"
+    loaded = subprocess.run(
+        ["launchctl", "load", str(plist_path)],
+        capture_output=True, text=True, check=False,
+    )
+    if loaded.returncode != 0:
+        # Already loaded — force the job to (re)start
+        subprocess.run(
+            ["launchctl", "kickstart", "-k", f"gui/{_uid()}/{label}"],
+            check=False,
+        )
+    return label
+
+
+def _stop_launchd(workspace: Path) -> str:
+    """Stop a running launchd user agent (unloads the plist)."""
+    plist_path = _launchd_plist_path(workspace)
+    label = f"com.chatmd.{_workspace_hash(workspace)}"
+    subprocess.run(
+        ["launchctl", "unload", str(plist_path)],
+        check=False,
+    )
+    return label
+
+
+def _uid() -> int:
+    """Return the current user's UID (macOS launchctl target).
+
+    Exposed as a helper so tests can monkey-patch it without importing
+    ``os`` in the call site.
+    """
+    import os
+
+    return os.getuid() if hasattr(os, "getuid") else 0
+
+
 def _cleanup_legacy_task(workspace: Path) -> None:
     """Remove legacy Task Scheduler entry (pre-v0.2.7 migration)."""
     task_name = f"ChatMD-{_workspace_hash(workspace)}"
@@ -390,6 +470,88 @@ def run_service_status_all() -> None:
         click.echo(t("service.status_all_hint_macos"))
     else:
         click.echo(t("service.unsupported_platform", platform=platform))
+
+
+def run_service_start(workspace_str: str) -> None:
+    """Start an already-installed ChatMD service for *workspace_str*."""
+    workspace = Path(workspace_str).resolve()
+    chatmd_dir = workspace / ".chatmd"
+
+    if not chatmd_dir.is_dir():
+        click.echo(t("cli.not_workspace", workspace=workspace))
+        sys.exit(1)
+
+    platform = sys.platform
+    if platform == "linux":
+        name = _start_systemd(workspace)
+        click.echo(t("service.started", platform="systemd", name=name))
+    elif platform == "darwin":
+        name = _start_launchd(workspace)
+        click.echo(t("service.started", platform="launchd", name=name))
+    elif platform == "win32":
+        if not _check_pywin32():
+            click.echo(t("service.pywin32_required"))
+            sys.exit(1)
+        try:
+            name = _start_windows(workspace)
+            click.echo(t("service.started", platform="Windows Service", name=name))
+        except Exception as exc:
+            click.echo(t("service.start_service_failed", error=str(exc)))
+            sys.exit(1)
+    else:
+        click.echo(t("service.unsupported_platform", platform=platform))
+        sys.exit(1)
+
+
+def run_service_stop(workspace_str: str) -> None:
+    """Stop a running ChatMD service for *workspace_str* (does not uninstall)."""
+    workspace = Path(workspace_str).resolve()
+    chatmd_dir = workspace / ".chatmd"
+
+    if not chatmd_dir.is_dir():
+        click.echo(t("cli.not_workspace", workspace=workspace))
+        sys.exit(1)
+
+    platform = sys.platform
+    if platform == "linux":
+        name = _stop_systemd(workspace)
+        click.echo(t("service.stopped", platform="systemd", name=name))
+    elif platform == "darwin":
+        name = _stop_launchd(workspace)
+        click.echo(t("service.stopped", platform="launchd", name=name))
+    elif platform == "win32":
+        if not _check_pywin32():
+            click.echo(t("service.pywin32_required"))
+            sys.exit(1)
+        try:
+            name = _stop_windows(workspace)
+            click.echo(t("service.stopped", platform="Windows Service", name=name))
+        except Exception as exc:
+            click.echo(t("service.stop_service_failed", error=str(exc)))
+            sys.exit(1)
+    else:
+        click.echo(t("service.unsupported_platform", platform=platform))
+        sys.exit(1)
+
+
+def run_service_restart(workspace_str: str) -> None:
+    """Restart a ChatMD service (stop then start; tolerates stopped state)."""
+    workspace = Path(workspace_str).resolve()
+    chatmd_dir = workspace / ".chatmd"
+
+    if not chatmd_dir.is_dir():
+        click.echo(t("cli.not_workspace", workspace=workspace))
+        sys.exit(1)
+
+    # Best-effort stop: don't fail the whole command if the service is
+    # already stopped (SCM / systemd / launchctl all return non-zero in
+    # that case).
+    try:
+        run_service_stop(workspace_str)
+    except SystemExit:
+        pass
+
+    run_service_start(workspace_str)
 
 
 def run_service_uninstall_all() -> None:

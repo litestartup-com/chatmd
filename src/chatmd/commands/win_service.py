@@ -317,6 +317,21 @@ def uninstall_service(service_name: str) -> None:
     win32serviceutil.RemoveService(service_name)
 
 
+def start_service(service_name: str) -> None:
+    """Start an already-installed ChatMD Windows Service via SCM.
+
+    Raises the underlying ``pywintypes.error`` on failure (e.g. service not
+    installed, already running, access denied).  Callers are expected to
+    translate that into a user-friendly message.
+    """
+    win32serviceutil.StartService(service_name)
+
+
+def stop_service(service_name: str) -> None:
+    """Stop a running ChatMD Windows Service via SCM."""
+    win32serviceutil.StopService(service_name)
+
+
 def query_service_status(service_name: str) -> str:
     """Query the current status of a Windows Service by name.
 

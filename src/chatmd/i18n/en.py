@@ -608,6 +608,30 @@ MESSAGES: dict[str, str] = {
     "service.win_uninstall_failed": (
         "\u26a0\ufe0f Failed to uninstall Windows Service: {error}"
     ),
+    "service.started": "\u2705 Service started ({platform}: {name})",
+    "service.stopped": "\u2705 Service stopped ({platform}: {name})",
+    "service.start_service_failed": (
+        "\u274c Failed to start service: {error}\n"
+        "   Hint: run `chatmd service install` first, or check permissions."
+    ),
+    "service.stop_service_failed": (
+        "\u26a0\ufe0f Failed to stop service: {error}\n"
+        "   Hint: the service may already be stopped."
+    ),
+    # ── doctor CLI ──────────────────────────────────────────────────────
+    "doctor.header": "\U0001f50d ChatMD Doctor — workspace: {workspace}",
+    "doctor.summary": (
+        "Summary: {ok} ok · {warn} warning(s) · {error} error(s) · {skip} skipped"
+    ),
+    "doctor.fix_hint_label": "Fix:",
+    "doctor.skipped_no_network": "skipped (--no-network)",
+    "doctor.check_crashed": "check crashed: {error}",
+    "doctor.category.environment": "Python & Dependencies",
+    "doctor.category.workspace": "Workspace & Configuration",
+    "doctor.category.service": "Service \u21c4 PID Consistency",
+    "doctor.category.provider": "AI Provider",
+    "doctor.category.git": "Git Repository",
+
     "service.no_services_found": "No ChatMD services found.",
     "service.all_services_header": "ChatMD services ({count}):",
     "service.status_all_hint_linux": (

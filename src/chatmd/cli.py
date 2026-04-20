@@ -212,3 +212,94 @@ def service_status(workspace: str | None) -> None:
     from chatmd.commands.service import run_service_status
 
     run_service_status(workspace)
+
+
+@service.command("start")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+def service_start(workspace: str) -> None:
+    """Start the ChatMD Agent system service."""
+    from chatmd.commands.service import run_service_start
+
+    run_service_start(workspace)
+
+
+@service.command("stop")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+def service_stop(workspace: str) -> None:
+    """Stop the ChatMD Agent system service (does not uninstall)."""
+    from chatmd.commands.service import run_service_stop
+
+    run_service_stop(workspace)
+
+
+@service.command("restart")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+def service_restart(workspace: str) -> None:
+    """Restart the ChatMD Agent system service."""
+    from chatmd.commands.service import run_service_restart
+
+    run_service_restart(workspace)
+
+
+@main.command()
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+@click.option(
+    "--category",
+    "-c",
+    "categories",
+    multiple=True,
+    help="Only run checks in the given category (repeatable).",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Show per-check details and enable opt-in smoke tests.",
+)
+@click.option(
+    "--no-network",
+    is_flag=True,
+    default=False,
+    help="Skip checks that require network access.",
+)
+def doctor(
+    workspace: str,
+    categories: tuple[str, ...],
+    verbose: bool,
+    no_network: bool,
+) -> None:
+    """Run environment and workspace health checks."""
+    from chatmd.commands.doctor import run_doctor
+
+    exit_code = run_doctor(
+        workspace,
+        categories=categories,
+        verbose=verbose,
+        no_network=no_network,
+    )
+    sys.exit(exit_code)
