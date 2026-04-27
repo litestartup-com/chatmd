@@ -2,6 +2,7 @@
 
 Centralizes authentication and endpoint routing for all LiteStartup services:
 - AI chat:       POST /client/v2/ai/chat
+- Plans confirm: POST /client/v2/ai/plans/confirm  (T-MVP03-M2 · destructive Phase-2)
 - Upload:        POST /client/v2/storage/upload
 - Publish:       POST /client/v2/publish
 - Email:         POST /client/v2/emails
@@ -28,6 +29,7 @@ _DEFAULT_TIMEOUT = 60
 # Default endpoint paths (relative to api_base)
 _DEFAULT_ENDPOINTS: dict[str, str] = {
     "chat": "/client/v2/ai/chat",
+    "plans_confirm": "/client/v2/ai/plans/confirm",
     "upload": "/client/v2/storage/upload",
     "publish": "/client/v2/publish",
     "email": "/client/v2/emails",
@@ -93,6 +95,66 @@ class LiteStartupProvider:
         return {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
+        }
+
+    # -- AI Plans (destructive two-phase confirm) ---------------------------
+
+    def confirm_plan(self, confirm_token: str) -> dict[str, Any]:
+        """Execute Phase-2 of the destructive tool confirm flow (T-MVP03-M2).
+
+        Calls ``POST /client/v2/ai/plans/confirm`` with ``{confirm_token}``
+        body. The server atomically consumes the token (single-use) and
+        replays the previously prepared plan from MySQL ``os_tool_plans``
+        without re-entering LiteAgent. See LAD ``RULE.md`` §R2.2 / §R4 / §R8.
+
+        Args:
+            confirm_token: The ``cft_<32 hex>`` token issued during Phase-1
+                by ``POST /client/v2/ai/chat`` with a ``/la <destructive>``
+                prompt.
+
+        Returns:
+            Success: ``{"success": True, "tool": str, "rendered": str,
+                       "data": dict}``
+            Failure: ``{"success": False, "error": str, "code": int}``
+                where ``code`` follows LS mapping — 400 bad format,
+                403 cross-team, 404 unknown, 409 already consumed,
+                410 expired, 500 internal.
+        """
+        url = self.endpoint("plans_confirm")
+        payload = {"confirm_token": confirm_token}
+        logger.debug("Confirming plan token=%s", _mask_token(confirm_token))
+
+        try:
+            resp = httpx.post(
+                url,
+                json=payload,
+                headers=self.auth_headers(),
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.TimeoutException:
+            return {"success": False, "error": f"Confirm timeout ({self._timeout}s)"}
+        except httpx.HTTPStatusError as exc:
+            return self._parse_error_response(exc, "Confirm")
+        except httpx.RequestError as exc:
+            return {"success": False, "error": f"Network error: {exc}"}
+
+        # LS envelope: {code: 200, message, data: {rendered, tool, data, ...}}
+        status_code = data.get("code", resp.status_code)
+        inner = data.get("data", {}) or {}
+
+        if status_code == 200 and isinstance(inner, dict):
+            return {
+                "success": True,
+                "tool": inner.get("tool", ""),
+                "rendered": inner.get("rendered", ""),
+                "data": inner.get("data", {}),
+            }
+        return {
+            "success": False,
+            "error": data.get("message", "Unknown confirm error"),
+            "code": status_code,
         }
 
     # -- Upload --------------------------------------------------------------
@@ -441,6 +503,19 @@ class LiteStartupProvider:
 
 
 # -- Factory -----------------------------------------------------------------
+
+
+def _mask_token(token: str, *, prefix_len: int = 8) -> str:
+    """Return a log-safe preview of a confirm_token.
+
+    Shows the first ``prefix_len`` characters (which include the ``cft_``
+    family prefix) plus an ellipsis, keeping full tokens out of debug logs
+    and audit trails. For tokens shorter than the prefix length, returns
+    the whole string unchanged to avoid misleading masks.
+    """
+    if not token or len(token) <= prefix_len:
+        return token or ""
+    return f"{token[:prefix_len]}…"
 
 
 def _extract_api_base(api_url: str) -> str:

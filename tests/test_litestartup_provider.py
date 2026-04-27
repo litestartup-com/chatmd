@@ -279,3 +279,162 @@ class TestCreateFromConfig:
         p = create_litestartup_provider(cfg)
         assert p.api_base == ""
         assert p.api_key == "sk-min"
+
+
+# ========== T-MVP03-M2 · destructive Phase-2 confirm_plan ==========
+
+
+class TestPlansConfirmEndpoint:
+    """plans_confirm is registered in _DEFAULT_ENDPOINTS."""
+
+    def test_plans_confirm_endpoint_registered(self):
+        p = LiteStartupProvider("https://api.litestartup.com", "k")
+        assert p.endpoint("plans_confirm") == (
+            "https://api.litestartup.com/client/v2/ai/plans/confirm"
+        )
+
+    def test_plans_confirm_endpoint_overridable(self):
+        p = LiteStartupProvider(
+            "https://api.litestartup.com",
+            "k",
+            endpoints={"plans_confirm": "/v3/ai/plans/confirm"},
+        )
+        assert p.endpoint("plans_confirm") == (
+            "https://api.litestartup.com/v3/ai/plans/confirm"
+        )
+
+
+class TestConfirmPlan:
+    """LiteStartupProvider.confirm_plan() covers the Phase-2 call (LAD §R2.2)."""
+
+    _TOKEN = "cft_" + "a" * 32  # shape-valid per LAD §R7
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_success(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 200,
+            "message": "Success",
+            "data": {
+                "mode": "confirm",
+                "type": "plan",
+                "confirm_token": self._TOKEN,
+                "tool": "contact.delete",
+                "rendered": "Deleted contact Alice (#42).",
+                "data": {"id": 42, "name": "Alice"},
+            },
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.confirm_plan(self._TOKEN)
+
+        assert result["success"] is True
+        assert result["tool"] == "contact.delete"
+        assert "Alice" in result["rendered"]
+        assert result["data"]["id"] == 42
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_payload_and_url_shape(self, mock_post):
+        """Captures POST to verify URL, headers, body match the contract."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 200,
+            "data": {"tool": "x", "rendered": "ok", "data": {}},
+        }
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        p.confirm_plan(self._TOKEN)
+
+        args, kwargs = mock_post.call_args
+        assert args[0] == "https://api.litestartup.com/client/v2/ai/plans/confirm"
+        assert kwargs["json"] == {"confirm_token": self._TOKEN}
+        assert kwargs["headers"]["Authorization"] == "Bearer sk-test"
+        assert kwargs["headers"]["Content-Type"] == "application/json"
+        assert kwargs["timeout"] == 60
+
+    @pytest.mark.parametrize(
+        ("status", "body_code", "body_msg"),
+        [
+            (404, 404, "Token not found"),
+            (409, 409, "already consumed"),
+            (410, 410, "token expired"),
+            (403, 403, "forbidden"),
+        ],
+    )
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_error_codes_propagated(
+        self, mock_post, status, body_code, body_msg,
+    ):
+        """LS 4xx errors flow through with correct code for i18n dispatch."""
+        err_resp = httpx.Response(
+            status,
+            json={"code": body_code, "message": body_msg},
+            request=httpx.Request("POST", "u"),
+        )
+        mock_post.side_effect = httpx.HTTPStatusError(
+            "", request=err_resp.request, response=err_resp,
+        )
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.confirm_plan(self._TOKEN)
+
+        assert result["success"] is False
+        assert result["code"] == body_code
+        assert body_msg in result["error"]
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_timeout(self, mock_post):
+        mock_post.side_effect = httpx.TimeoutException("timeout")
+
+        p = LiteStartupProvider(
+            "https://api.litestartup.com", "sk-test", timeout=5,
+        )
+        result = p.confirm_plan(self._TOKEN)
+
+        assert result["success"] is False
+        assert "Confirm timeout (5s)" in result["error"]
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_network_error(self, mock_post):
+        mock_post.side_effect = httpx.ConnectError("refused")
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.confirm_plan(self._TOKEN)
+
+        assert result["success"] is False
+        assert "Network error" in result["error"]
+
+
+class TestMaskToken:
+    """_mask_token() redacts confirm_tokens for log safety (§9 risk)."""
+
+    def test_long_token_truncates_to_prefix(self):
+        from chatmd.providers.litestartup import _mask_token
+        token = "cft_" + "a" * 32
+        masked = _mask_token(token)
+        assert masked == "cft_aaaa…"
+        assert len(masked) == 9
+        assert "a" * 32 not in masked
+
+    def test_short_token_returned_unchanged(self):
+        from chatmd.providers.litestartup import _mask_token
+        assert _mask_token("abc") == "abc"
+        assert _mask_token("cft_ab") == "cft_ab"
+
+    def test_empty_or_none(self):
+        from chatmd.providers.litestartup import _mask_token
+        assert _mask_token("") == ""
+        # Defensive: not None, caller normalizes — but check it doesn't crash.
+        assert _mask_token(None) == ""  # type: ignore[arg-type]
+
+    def test_custom_prefix_length(self):
+        from chatmd.providers.litestartup import _mask_token
+        token = "cft_" + "b" * 32
+        masked = _mask_token(token, prefix_len=4)
+        assert masked == "cft_…"

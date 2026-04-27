@@ -239,6 +239,13 @@ The Agent detects file changes, executes commands, and writes results back into 
 | `/log [N]` | | View audit log |
 | `/upload` | `/up` | Upload local images to cloud |
 
+### Tool Invocation (LiteStartup)
+
+| Command | Description |
+|---------|-------------|
+| `/la <input>` | Send a free-form request to LiteStartup; the agent picks the right tool (`contact.create`, `email.send`, `blog.publish`, …) and executes it. |
+| `/la confirm cft_<token>` | Phase-2 confirmation for destructive tools (`contact.delete`, `email.delete`, `blog.unpublish`, …). LiteStartup returns a confirmation card with a `cft_<32 hex>` token; copy-paste the suggested command into the chat to actually execute. Tokens expire in 10 minutes; format is validated locally so a typo never reaches the network. |
+
 ### Trigger Methods
 
 - **Slash commands**: `/command input`

@@ -1141,8 +1141,14 @@ class Agent:
         bind_skill = BindSkill(provider=self._litestartup)
         self._router.register(bind_skill)
 
+        # /la — LiteAdapter passthrough to LS /ai/chat (T-MVP01 段 c)
+        from chatmd.skills.la import LaSkill
+        la_skill = LaSkill(provider=self._litestartup)
+        self._router.register(la_skill)
+
         logger.info(
-            "Infra skills registered: sync, log, new, upload, notify, confirm, inbox, bind",
+            "Infra skills registered: sync, log, new, upload, notify, confirm, "
+            "inbox, bind, la",
         )
 
     def _load_custom_skills(self) -> None:

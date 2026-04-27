@@ -649,4 +649,18 @@ MESSAGES: dict[str, str] = {
     "alias.translate_en": "translate(英文)",
     "alias.translate_jp": "translate(日文)",
     "alias.translate_cn": "translate(中文)",
+
+    # ── /la skill — destructive confirm (T-MVP03-M2) ────────────────────
+    "la.confirm.card_header": "需要确认的破坏性操作",
+    "la.confirm.card_hint": (
+        "输入 `/la confirm {token}` 确认执行 · 10 分钟内有效"
+    ),
+    "la.confirm.bad_token": (
+        "Token 格式不对，预期 `cft_` + 32 位十六进制"
+    ),
+    "la.confirm.not_found": "Token 不存在或已失效",
+    "la.confirm.forbidden": "这个 Token 不属于当前账号",
+    "la.confirm.consumed": "这个操作已经执行过，不能重复确认",
+    "la.confirm.expired": "Token 已过期（有效期 10 分钟），请重新发起命令",
+    "la.confirm.generic": "确认失败：{message}",
 }

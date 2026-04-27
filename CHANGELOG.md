@@ -4,6 +4,41 @@
 
 ---
 
+## [0.2.11] — 2026-04-27
+
+Destructive tool two-phase confirmation UX for the `/la` skill (T-MVP03-M2). Aligned with LiteStartup M3 runtime contract (Phase-1 `confirm_required` envelope + Phase-2 `POST /client/v2/ai/plans/confirm`). 1277 passed, 6 skipped, ruff clean.
+
+### Added
+
+- **`/la confirm cft_<token>` subcommand** — Phase-2 dispatch for destructive tools (`contact.delete`, `email.delete`, `blog.unpublish`, …). Format-validates the token locally before sending; invalid tokens short-circuit with an i18n hint and **never hit the network**. Dispatch is case-insensitive (`/la Confirm …` works too).
+- **Phase-1 confirmation card rendering** — When LiteStartup returns `confirm_required: true`, ChatMarkdown renders a warning card with the LS-prerendered description, tool name, masked confirm token, expiry, and a one-line user prompt instructing them to type `/la confirm <token>` within 10 minutes.
+- **`LiteStartupProvider.confirm_plan(token)`** — new provider method calling the `plans_confirm` endpoint. Returns `{success, tool, rendered, data}` on success, or surfaces the LS HTTP error code (400 / 403 / 404 / 409 / 410 / 500) for the skill to map to the right i18n key.
+- **8 new i18n keys** under `la.confirm.*` (en + zh-CN, parity 306/306) — card header, user hint, plus a full error matrix: `bad_token`, `not_found`, `forbidden`, `consumed`, `expired`, `generic`.
+- **Token masking everywhere except the user-visible chat** — logs, audit metadata, and provider error paths emit only `cft_<first 8 chars>…`. Full 36-character tokens appear only in the active `chat.md` line so the user can copy-paste them.
+
+### User flow
+
+```markdown
+/la delete contact #42
+> ⚠️ Confirmation required for a destructive operation
+> Will delete contact "Alice" (id=42)
+> - tool: contact.delete
+> - confirm_token: cft_a1b2c3d4...
+> - expires_at: 2026-04-26T00:45:00Z
+> Type `/la confirm cft_a1b2c3d4...` to execute · valid for 10 minutes
+
+/la confirm cft_a1b2c3d4...
+> ✅ Deleted contact "Alice" (id=42).
+```
+
+### Out of scope (deferred)
+
+- No `pip install liteadapter` dependency — `/la` remains a thin YAML-passthrough.
+- No local tool catalog cache or dry-run preview.
+- No SSE streaming render for confirmation cards.
+
+---
+
 ## [0.2.10] — 2026-04-20
 
 Windows Service status consistency fix, service lifecycle commands, and `chatmd doctor` diagnostic CLI.

@@ -670,4 +670,20 @@ MESSAGES: dict[str, str] = {
     "alias.translate_en": "translate(English)",
     "alias.translate_jp": "translate(Japanese)",
     "alias.translate_cn": "translate(Chinese)",
+
+    # ── /la skill — destructive confirm (T-MVP03-M2) ────────────────────
+    "la.confirm.card_header": "Destructive action requires confirmation",
+    "la.confirm.card_hint": (
+        "Type `/la confirm {token}` to execute · valid 10 min"
+    ),
+    "la.confirm.bad_token": (
+        "Invalid token format, expected `cft_` + 32 hex chars"
+    ),
+    "la.confirm.not_found": "Token not found or already expired",
+    "la.confirm.forbidden": "This token does not belong to your account",
+    "la.confirm.consumed": "This action has already been executed",
+    "la.confirm.expired": (
+        "Token expired (10 min TTL), please re-issue the command"
+    ),
+    "la.confirm.generic": "Confirm failed: {message}",
 }
