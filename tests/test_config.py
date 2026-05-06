@@ -64,6 +64,31 @@ class TestConfigLoading:
         assert config.get("watcher.debounce_ms") == 300
         assert config.get("async.max_concurrent") == 3
 
+    def test_kb_manifest_resolves_interaction_paths(self, workspace):
+        kb = {
+            "roots": {
+                "agent": "A-ChatMD",
+                "inbox": "C-Inbox",
+            },
+            "entrypoints": {
+                "chat": "A-ChatMD/chat.md",
+                "cron": "A-ChatMD/cron.md",
+                "notification": "A-ChatMD/notification.md",
+            },
+            "write_targets": {
+                "inbox": "C-Inbox",
+            },
+        }
+        with open(workspace / ".chatmd" / "kb.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(kb, f)
+
+        config = Config(workspace)
+        assert config.interaction_dir == "A-ChatMD"
+        assert config.interaction_path("chat.md") == workspace / "A-ChatMD" / "chat.md"
+        assert config.interaction_path("cron.md") == workspace / "A-ChatMD" / "cron.md"
+        assert config.write_target_path("inbox", "chatmd/inbox") == workspace / "C-Inbox"
+        assert "A-ChatMD/" in config.resolve_watch_paths()
+
 
 class TestEnvVarResolution:
     """Test ${ENV_VAR} resolution."""

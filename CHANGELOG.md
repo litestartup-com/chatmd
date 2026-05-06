@@ -4,6 +4,29 @@
 
 ---
 
+## [0.2.12] — 2026-05-06
+
+Bot multi-repository binding and workspace profile initialization. 1336 passed, 6 skipped, ruff clean.
+
+### Added
+
+- **Bot multi-repository binding** — one LiteStartup / Telegram account can now bind multiple local ChatMarkdown workspaces. Telegram Bot can list repositories, switch the active repository, and unbind repositories.
+- **Desktop binding management** — `/bind status` lists all bound repositories and marks the active repository plus the current workspace. `/unbind`, `/unbind <alias>`, and `/unbind --all` provide workspace-aware unbinding from ChatMarkdown.
+- **Workspace profiles** — `chatmd init` now supports `--profile basic|personal|twin` and `--language en|cn`. `basic` remains the default and keeps the classic `.chatmd/` + `chatmd/` layout.
+- **Personal / Twin workspace templates** — `personal` and `twin` generate practical dashboards, inbox/project/note/resource/archive structures, templates, and localized README files.
+- **Knowledge manifest and privacy policy** — profile workspaces generate `.chatmd/kb.yaml` and `.chatmd/privacy.yaml`; local ChatMarkdown logic reads manifest entrypoints and write targets before falling back to the classic `chatmd/` layout.
+
+### Changed
+
+- **`/inbox` manifest support** — the inbox command now reads `SkillContext.write_targets["inbox"]`, allowing profile workspaces to use `C-Inbox/` while preserving fallback behavior for old workspaces.
+- **Dashboard templates** — `Home.md` and `Today.md` are lightweight working dashboards. `Knowledge-Map.md` is a manually maintained knowledge asset map and no longer implies automatic global indexing or AI global search.
+
+### Fixed
+
+- **Second repository binding failure** — removed legacy single-repository client-side guard logic and fixed informational result rendering so multi-repo bind flows no longer show a misleading "Unknown error".
+
+---
+
 ## [0.2.11] — 2026-04-27
 
 Destructive tool two-phase confirmation UX for the `/la` skill (T-MVP03-M2). Aligned with LiteStartup M3 runtime contract (Phase-1 `confirm_required` envelope + Phase-2 `POST /client/v2/ai/plans/confirm`). 1277 passed, 6 skipped, ruff clean.

@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 
 _current_locale: str = "en"
 _catalogs: dict[str, dict[str, str]] = {}
+_LOCALE_ALIASES: dict[str, str] = {
+    "cn": "zh_CN",
+    "zh": "zh_CN",
+    "zh-CN": "zh_CN",
+    "zh_CN": "zh_CN",
+}
 
 
 def _load_catalog(locale: str) -> dict[str, str]:
@@ -16,7 +22,7 @@ def _load_catalog(locale: str) -> dict[str, str]:
     if locale in _catalogs:
         return _catalogs[locale]
 
-    normalized = locale.replace("-", "_")  # "zh-CN" -> "zh_CN"
+    normalized = _LOCALE_ALIASES.get(locale, locale.replace("-", "_"))
     try:
         mod = __import__(f"chatmd.i18n.{normalized}", fromlist=["MESSAGES"])
         _catalogs[locale] = mod.MESSAGES

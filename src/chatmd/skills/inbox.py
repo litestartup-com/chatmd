@@ -5,7 +5,7 @@ Usage::
     /inbox          # Show today's inbox summary
     /inbox 2026-04-13  # Show inbox for a specific date
 
-Reads ``chatmd/inbox/YYYY-MM-DD.md`` and displays a summary including
+Reads ``write_targets.inbox/YYYY-MM-DD.md`` and displays a summary including
 message count, time range, and a brief preview of each entry.
 """
 
@@ -45,9 +45,12 @@ class InboxSkill(Skill):
         else:
             target_date = date.today().isoformat()
 
-        # Locate inbox file
-        workspace = context.interaction_root or context.workspace
-        inbox_file = workspace / "chatmd" / "inbox" / f"{target_date}.md"
+        inbox_root = None
+        if context.write_targets:
+            inbox_root = context.write_targets.get("inbox")
+        if inbox_root is None:
+            inbox_root = context.workspace / "chatmd" / "inbox"
+        inbox_file = inbox_root / f"{target_date}.md"
 
         if not inbox_file.exists():
             return SkillResult(

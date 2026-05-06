@@ -438,3 +438,336 @@ class TestMaskToken:
         token = "cft_" + "b" * 32
         masked = _mask_token(token, prefix_len=4)
         assert masked == "cft_…"
+
+
+# ========== T-125 · bind_initiate repo_alias propagation ==========
+
+
+class TestBindInitiateRepoAlias:
+    """T-125 option B: bind_initiate must forward a non-empty repo_alias to
+    the API payload, and must omit the key when empty so the server stores
+    NULL and falls back to effective_alias on its side.
+    """
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_non_empty_repo_alias_lands_in_payload(self, mock_post):
+        """A non-empty alias from the skill must be sent verbatim."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 200,
+            "message": "ok",
+            "data": {"bind_code": "123456", "expires_in": 300},
+        }
+        mock_post.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        p.bind_initiate(
+            repo_url="https://github.com/me/note-kaka.git",
+            git_token="ghp_xxx",
+            platform="telegram",
+            repo_alias="note-kaka",
+        )
+
+        # Capture the JSON payload posted to /bind/initiate.
+        call_kwargs = mock_post.call_args.kwargs
+        payload = call_kwargs["json"]
+        assert payload.get("repo_alias") == "note-kaka", (
+            "non-empty repo_alias must be forwarded verbatim"
+        )
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_empty_repo_alias_omitted_from_payload(self, mock_post):
+        """Empty / default repo_alias must NOT add the key -- server then
+        stores NULL and synthesises effective_alias from repo_url itself.
+        Important so legacy callers (and the empty-derivation fallback)
+        don't accidentally write an empty string into the DB.
+        """
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 200, "message": "ok",
+            "data": {"bind_code": "123456", "expires_in": 300},
+        }
+        mock_post.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        p.bind_initiate(
+            repo_url="https://github.com/me/repo.git",
+            git_token="ghp_xxx",
+            platform="telegram",
+            repo_alias="",
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "repo_alias" not in payload, (
+            "empty repo_alias must be omitted so the server can NULL the column"
+        )
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_repo_alias_default_is_omitted(self, mock_post):
+        """No repo_alias kwarg at all -> not in payload (back-compat with
+        any caller that hasn't been updated for T-125 yet).
+        """
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 200, "message": "ok",
+            "data": {"bind_code": "123456", "expires_in": 300},
+        }
+        mock_post.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        p.bind_initiate(
+            repo_url="https://github.com/me/repo.git",
+            git_token="ghp_xxx",
+            platform="telegram",
+            # repo_alias intentionally omitted
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "repo_alias" not in payload
+
+
+# ========== T-126 · multi-repo bind_list / bind_unbind ==========
+
+
+class TestBindList:
+    """T-R083 / T-126: provider.bind_list() wraps GET /api/bot/bind/list and
+    must surface the {repos, count} envelope verbatim so the skill layer can
+    render it directly. Errors must be normalised into the standard
+    {success: False, error, code} shape used by the rest of the provider.
+    """
+
+    @patch("chatmd.providers.litestartup.httpx.get")
+    def test_sends_get_with_platform_query_and_auth_header(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 0,
+            "message": "OK",
+            "data": {"repos": [], "count": 0},
+        }
+        mock_get.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        p.bind_list(platform="telegram")
+
+        call_kwargs = mock_get.call_args.kwargs
+        # URL is positional argument 0 -- pull out of args.
+        call_args = mock_get.call_args.args
+        assert call_args[0] == "https://api.litestartup.com/api/bot/bind/list"
+        assert call_kwargs["params"] == {"platform": "telegram"}
+        assert call_kwargs["headers"]["Authorization"] == "Bearer sk-test"
+
+    @patch("chatmd.providers.litestartup.httpx.get")
+    def test_returns_repos_and_count_on_success(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 0,
+            "message": "OK",
+            "data": {
+                "repos": [
+                    {
+                        "id": 5,
+                        "repo_alias": "note-kaka",
+                        "effective_alias": "note-kaka",
+                        "repo_url_masked": "github.com/me/note-kaka",
+                        "is_active": True,
+                        "bound_at": "2026-04-27 12:00:00",
+                        "updated_at": "2026-04-28 09:00:00",
+                    },
+                    {
+                        "id": 6,
+                        "repo_alias": None,
+                        "effective_alias": "chatmd-test",
+                        "repo_url_masked": "github.com/me/chatmd-test",
+                        "is_active": False,
+                        "bound_at": "2026-04-28 18:00:00",
+                        "updated_at": "2026-04-28 18:00:00",
+                    },
+                ],
+                "count": 2,
+            },
+        }
+        mock_get.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.bind_list(platform="telegram")
+
+        assert result["success"] is True
+        assert result["count"] == 2
+        assert len(result["repos"]) == 2
+        # The skill layer relies on effective_alias being non-empty for
+        # legacy NULL-alias rows -- this is the contract we lock in.
+        assert result["repos"][1]["repo_alias"] is None
+        assert result["repos"][1]["effective_alias"] == "chatmd-test"
+
+    @patch("chatmd.providers.litestartup.httpx.get")
+    def test_default_platform_is_telegram(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 0, "message": "OK", "data": {"repos": [], "count": 0},
+        }
+        mock_get.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        p.bind_list()  # no platform kwarg
+
+        assert mock_get.call_args.kwargs["params"] == {"platform": "telegram"}
+
+    @patch("chatmd.providers.litestartup.httpx.get")
+    def test_non_zero_code_returns_failure_envelope(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 2001,
+            "message": "Unauthorized",
+            "data": None,
+        }
+        mock_get.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.bind_list()
+
+        assert result["success"] is False
+        assert result["code"] == 2001
+        assert "Unauthorized" in result["error"]
+
+    @patch("chatmd.providers.litestartup.httpx.get")
+    def test_network_error_normalised(self, mock_get):
+        mock_get.side_effect = httpx.RequestError(
+            "connection refused", request=httpx.Request("GET", "u"),
+        )
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.bind_list()
+
+        assert result["success"] is False
+        assert "Network error" in result["error"]
+
+
+class TestBindUnbind:
+    """T-R083 / T-126: provider.bind_unbind() must serialise the right
+    payload for both the single-alias and all-true modes, and refuse the
+    empty case before issuing a request.
+    """
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_single_alias_sends_alias_and_platform(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 0,
+            "message": "OK",
+            "data": {
+                "deleted": {"id": 7, "repo_alias": "stale"},
+                "deleted_uuid": "uuid-stale",
+                "new_active": None,
+                "remaining_count": 0,
+            },
+        }
+        mock_post.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.bind_unbind(alias="stale", platform="telegram")
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload == {"alias": "stale", "platform": "telegram"}
+        assert "all" not in payload, (
+            "single-alias mode must not set the all flag at all"
+        )
+        assert result["success"] is True
+        assert result["deleted_uuid"] == "uuid-stale"
+        assert result["remaining_count"] == 0
+        assert result["new_active"] is None
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_all_true_sends_all_flag_and_omits_alias(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "code": 0,
+            "message": "OK",
+            "data": {
+                "deleted_count": 2,
+                "deleted": [
+                    {"id": 5, "repo_alias": "note-kaka"},
+                    {"id": 6, "repo_alias": None},
+                ],
+            },
+        }
+        mock_post.return_value = mock_resp
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        # Pass alias too -- service contract says `all` wins for safety.
+        result = p.bind_unbind(alias="ignored", all=True, platform="telegram")
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload.get("all") is True
+        assert payload["platform"] == "telegram"
+        # When all=True we still don't bother including alias, even when
+        # the caller passed one (server would ignore it but we want a
+        # cleaner audit trail in the access log).
+        assert "alias" not in payload
+        assert result["success"] is True
+        assert result["deleted_count"] == 2
+        assert len(result["deleted"]) == 2
+
+    def test_no_alias_no_all_raises_value_error(self):
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        with pytest.raises(ValueError, match="alias.*all"):
+            p.bind_unbind()
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_alias_not_found_returns_failure_with_code(self, mock_post):
+        """Server returns code=4040 (alias not in caller scope) -- chatmd
+        skill layer maps this to a friendly i18n message rather than
+        leaking the raw English text.
+        """
+        # 404 raises HTTPStatusError via raise_for_status -- exercise that
+        # path so we hit _parse_error_response.
+        request = httpx.Request("POST", "u")
+        response = httpx.Response(
+            404,
+            json={"code": 4040, "message": "Alias 'nope' not found"},
+            request=request,
+        )
+        mock_post.side_effect = httpx.HTTPStatusError(
+            "", request=request, response=response,
+        )
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.bind_unbind(alias="nope")
+
+        assert result["success"] is False
+        assert result["code"] == 4040
+        assert "Alias" in result["error"]
+
+    @patch("chatmd.providers.litestartup.httpx.post")
+    def test_timeout_normalised(self, mock_post):
+        mock_post.side_effect = httpx.TimeoutException("timeout")
+
+        p = LiteStartupProvider("https://api.litestartup.com", "sk-test")
+        result = p.bind_unbind(alias="anything")
+
+        assert result["success"] is False
+        assert "timeout" in result["error"].lower()
+
+
+class TestBindEndpoints:
+    """T-126 endpoint registration sanity check."""
+
+    def test_bind_list_endpoint(self):
+        p = LiteStartupProvider("https://api.litestartup.com", "k")
+        assert p.endpoint("bind_list") == (
+            "https://api.litestartup.com/api/bot/bind/list"
+        )
+
+    def test_bind_unbind_endpoint(self):
+        p = LiteStartupProvider("https://api.litestartup.com", "k")
+        assert p.endpoint("bind_unbind") == (
+            "https://api.litestartup.com/api/bot/bind/unbind"
+        )

@@ -2,11 +2,14 @@
 
 Usage::
 
-    /bind ghp_xxxxxxxxxxxxxxxxxxxx
+    /bind ghp_xxxxxxxxxxxxxxxxxxxx     # primary: initiate a binding
+    /bind status                       # T-R083 / T-126: list all bindings
 
 The skill automatically reads ``git remote get-url origin``, converts SSH
 URLs to HTTPS, calls the LiteStartup bind API, and displays a 6-digit
-bind code for the user to send to the Telegram Bot.
+bind code for the user to send to the Telegram Bot. The ``status``
+sub-command surfaces every binding visible to the LS user (multi-repo
+support landed in T-R083) and marks the current workspace with ``▶``.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from chatmd.i18n import t
 from chatmd.infra.git_utils import (
+    derive_repo_alias,
     detect_git_platform,
     get_git_remote_url,
     get_token_help_url,
@@ -65,9 +69,11 @@ class BindSkill(Skill):
     ) -> SkillResult:
         """Execute the bind flow.
 
-        ``input_text`` is expected to contain the Git platform access token.
+        ``input_text`` is expected to contain the Git platform access token,
+        or the literal sub-command ``status`` (T-R083 / T-126) to list every
+        binding visible to the current LS user.
         """
-        git_token = input_text.strip()
+        raw = input_text.strip()
 
         # -- Validate prerequisites ------------------------------------------
 
@@ -77,6 +83,18 @@ class BindSkill(Skill):
                 error=t("error.bind_no_provider"),
             )
 
+        # -- T-126 sub-command: `/bind status` -> multi-repo listing ---------
+        #
+        # Recognise the literal `status` token BEFORE the no-token branch
+        # below so that `/bind status` doesn't fall through to the
+        # missing-token help. We accept extra trailing args (they're
+        # currently ignored) so a future `/bind status --all` etc. can
+        # extend without breaking the command surface.
+        first_word = raw.split(maxsplit=1)[0] if raw else ""
+        if first_word == "status":
+            return self._handle_status(context)
+
+        git_token = raw
         if not git_token:
             return self._missing_token_help(context)
 
@@ -91,24 +109,34 @@ class BindSkill(Skill):
 
         repo_url = strip_url_credentials(ssh_to_https(raw_url))
 
-        # -- Check current binding status ------------------------------------
-
-        status_result = self._provider.bind_status()
-        if not status_result.get("success"):
-            logger.warning(
-                "bind_status() failed, proceeding to initiate anyway: %s",
-                status_result.get("error", "unknown"),
-            )
-        elif status_result.get("status") == "active":
-            return self._already_bound(status_result)
+        # -- Derive a friendly alias from the local workspace ----------------
+        #
+        # T-125 option B: pass `repo_alias` so the server can persist a
+        # human-readable handle that survives /repos and powers
+        # `/use <alias>` from Telegram. We prefer the local Git root name
+        # because that's the directory the user actually `cd`s into and
+        # therefore intuitively types. Falls back to URL basename when
+        # Git is unavailable; empty string is acceptable (server then
+        # synthesises an effective_alias from the URL).
+        repo_alias = derive_repo_alias(context.workspace, repo_url)
 
         # -- Call bind/initiate ----------------------------------------------
+        #
+        # Note (T-R083 / T-123.2 hotfix): we used to short-circuit here when
+        # bind_status() returned status="active", but that is incorrect under
+        # the multi-repo binding model — a user may legitimately bind multiple
+        # distinct repos under the same account. The server is the only
+        # authority on duplicate detection (UserBindingService::findByUserAndRepo
+        # returns code 1003 for the exact-same repo_url on the same user +
+        # platform). Removing the client-side guard avoids false negatives
+        # across different repos sharing one git_token.
 
         result = self._provider.bind_initiate(
             repo_url=repo_url,
             git_token=git_token,
             platform="telegram",
             timezone=self._detect_timezone(),
+            repo_alias=repo_alias,
         )
 
         if not result.get("success"):
@@ -143,19 +171,117 @@ class BindSkill(Skill):
 
         return SkillResult(success=False, output="\n".join(lines), informational=True)
 
-    def _already_bound(self, status: dict) -> SkillResult:
-        """Return output when user already has an active binding."""
-        lines = [
-            t("output.bind.already_active"),
-            "",
-            t(
-                "output.bind.current_binding",
-                platform=status.get("platform", "?"),
-                repo=status.get("repo_url_masked", "?"),
-                bound_at=status.get("bound_at", "?"),
-            ),
-        ]
-        return SkillResult(success=False, output="\n".join(lines), informational=True)
+    # -- T-126 · /bind status sub-command -----------------------------------
+
+    def _handle_status(self, context: SkillContext) -> SkillResult:
+        """Render the multi-repo binding listing.
+
+        Calls ``provider.bind_list()`` and emits a markdown listing where:
+
+        - ``✅`` marks the active binding (server-side ``is_active`` flag).
+        - ``▶`` marks the binding whose repo URL matches the current
+          workspace, so the user immediately sees "where am I right now"
+          without having to copy-compare URLs.
+        - ``·`` is the catch-all bullet for inactive non-current rows.
+
+        Empty list emits a friendly hint pointing back at ``/bind <token>``
+        rather than a confusing blank result. Network / auth / rate-limit
+        errors are surfaced via :meth:`_list_error` with the same i18n
+        coding pattern used by the bind initiate flow.
+        """
+        # _provider non-null already guaranteed by execute() guard.
+        assert self._provider is not None
+        result = self._provider.bind_list(platform="telegram")
+        if not result.get("success"):
+            return self._list_error(result)
+
+        repos = result.get("repos", [])
+        count = result.get("count", 0)
+
+        if count == 0 or not repos:
+            return SkillResult(
+                success=True,
+                output=t("output.bind.list_empty"),
+                informational=True,
+            )
+
+        # Compute the masked URL for the current workspace so we can mark
+        # the row that corresponds to "where the user is right now". We
+        # mirror the LS server-side maskRepoUrl rule (strip credentials,
+        # scheme, .git suffix) -- the two implementations are kept in
+        # lockstep on purpose; see the docstring on git_utils.mask_repo_url.
+        current_masked = ""
+        raw_url = get_git_remote_url(context.workspace) or ""
+        if raw_url:
+            try:
+                current_masked = mask_repo_url(
+                    strip_url_credentials(ssh_to_https(raw_url)),
+                )
+            except Exception:  # noqa: BLE001
+                # Best-effort -- a degraded mask just means we won't put
+                # ▶ next to any row. The list itself is still useful.
+                current_masked = ""
+
+        lines = [t("output.bind.list_header", count=count), ""]
+        for repo in repos:
+            # `effective_alias` is guaranteed non-empty by the server
+            # (T-125 synthesises it from repo_url basename for legacy
+            # NULL rows). Fall back to literals in case an older server
+            # responds without the new field.
+            alias = (
+                repo.get("effective_alias")
+                or repo.get("repo_alias")
+                or t("output.bind.list_unnamed_alias")
+            )
+            masked = repo.get("repo_url_masked") or ""
+            is_active = bool(repo.get("is_active"))
+            is_current = bool(current_masked) and masked == current_masked
+
+            markers: list[str] = []
+            if is_active:
+                markers.append("✅")
+            if is_current:
+                markers.append("▶")
+            if not markers:
+                markers.append("·")
+            marker_str = " ".join(markers)
+
+            lines.append(t(
+                "output.bind.list_row",
+                marker=marker_str,
+                alias=alias,
+                url=masked,
+            ))
+
+        lines.append("")
+        lines.append(t("output.bind.list_footer"))
+
+        return SkillResult(
+            success=True,
+            output="\n".join(lines),
+            informational=True,
+        )
+
+    def _list_error(self, result: dict) -> SkillResult:
+        """Render an error envelope from ``provider.bind_list``."""
+        error_code = result.get("code")
+        error_msg = result.get("error", "")
+
+        # Reuse bind_initiate's auth/rate-limit messages so the user sees
+        # the same friendly text regardless of which call leaked the error.
+        code_map = {
+            2001: t("error.bind_unauthorized"),
+            3001: t("error.bind_rate_limited"),
+        }
+        if error_code and error_code in code_map:
+            user_msg = code_map[error_code]
+        elif error_msg:
+            code_suffix = f" [code={error_code}]" if error_code else ""
+            user_msg = t("error.bind_list_failed", detail=error_msg) + code_suffix
+        else:
+            user_msg = t("error.bind_list_failed", detail="(no detail)")
+
+        return SkillResult(success=False, output="", error=user_msg)
 
     def _bind_error(self, result: dict) -> SkillResult:
         """Return output for a failed bind attempt."""

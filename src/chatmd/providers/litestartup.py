@@ -6,7 +6,9 @@ Centralizes authentication and endpoint routing for all LiteStartup services:
 - Upload:        POST /client/v2/storage/upload
 - Publish:       POST /client/v2/publish
 - Email:         POST /client/v2/emails
-- Bot bind:      POST /api/bot/bind/initiate, GET /api/bot/bind/status
+- Bot bind:      POST /api/bot/bind/initiate, GET /api/bot/bind/status,
+                 GET  /api/bot/bind/list    (T-126)
+                 POST /api/bot/bind/unbind  (T-126)
 - Bot notify:    POST /api/bot/notify
 
 Backward compatible with the old ``ai.providers[].api_url`` config format.
@@ -35,6 +37,8 @@ _DEFAULT_ENDPOINTS: dict[str, str] = {
     "email": "/client/v2/emails",
     "bind_initiate": "/api/bot/bind/initiate",
     "bind_status": "/api/bot/bind/status",
+    "bind_list": "/api/bot/bind/list",
+    "bind_unbind": "/api/bot/bind/unbind",
     "bot_notify": "/api/bot/notify",
     "bot_sync_complete": "/api/bot/sync-complete",
 }
@@ -276,10 +280,19 @@ class LiteStartupProvider:
         git_token: str,
         platform: str = "telegram",
         timezone: str = "",
+        repo_alias: str = "",
     ) -> dict[str, Any]:
         """Initiate a Bot binding and obtain a 6-digit bind code.
 
         Calls ``POST /api/bot/bind/initiate``.
+
+        Args:
+            repo_alias: Optional user-friendly short name for this binding
+                (T-125). Empty string is omitted from the payload so the
+                server stores ``NULL`` and synthesises an
+                ``effective_alias`` from the repo URL basename. Send this
+                when you want ``/use <alias>`` to address the binding by
+                a memorable handle (e.g. the workspace directory name).
 
         Returns ``{"success": True, "bind_code": "...", ...}`` on success,
         or ``{"success": False, "error": "...", "code": ...}`` on failure.
@@ -292,6 +305,10 @@ class LiteStartupProvider:
         }
         if timezone:
             payload["timezone"] = timezone
+        if repo_alias:
+            # Server normalises further (trim + empty -> NULL); we just
+            # avoid sending the key when we have nothing to say.
+            payload["repo_alias"] = repo_alias
 
         logger.debug("Initiating bot bind for platform=%s", platform)
 
@@ -365,6 +382,181 @@ class LiteStartupProvider:
         return {
             "success": False,
             "error": data.get("message", "Unknown status error"),
+        }
+
+    # -- Bot Bind · multi-repo (T-R083 / T-126) ------------------------------
+
+    def bind_list(self, platform: str = "telegram") -> dict[str, Any]:
+        """List all repo bindings visible to the current LS user.
+
+        Calls ``GET /api/bot/bind/list?platform=<platform>`` (T-R083 / T-122).
+
+        The server returns a **descending list by (is_active, updated_at)**
+        so the active binding always appears first -- the skill layer can
+        still re-order for display, but relying on this ordering keeps
+        tests stable.
+
+        Each repo row has the shape::
+
+            {
+                "id": int,
+                "repo_alias": str | None,        # raw value stored in DB
+                "effective_alias": str,          # T-125: guaranteed non-empty,
+                                                 # falls back to repo_url
+                                                 # basename for legacy NULL rows
+                "repo_url_masked": str,
+                "is_active": bool,
+                "bound_at": str | None,          # "YYYY-MM-DD HH:MM:SS"
+                "updated_at": str | None,
+            }
+
+        Returns::
+
+            {
+                "success": True,
+                "repos": [ {...row...}, ... ],
+                "count": int,
+            }
+
+        or on failure::
+
+            {"success": False, "error": str, "code": int | None}
+        """
+        url = self.endpoint("bind_list")
+        params = {"platform": platform} if platform else None
+
+        logger.debug("Listing bot bindings for platform=%s", platform)
+
+        try:
+            resp = httpx.get(
+                url,
+                params=params,
+                headers=self.auth_headers(),
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.TimeoutException:
+            return {"success": False, "error": f"List timeout ({self._timeout}s)"}
+        except httpx.HTTPStatusError as exc:
+            return self._parse_error_response(exc, "List")
+        except httpx.RequestError as exc:
+            return {"success": False, "error": f"Network error: {exc}"}
+
+        if data.get("code") == 0:
+            inner = data.get("data", {}) or {}
+            # Server returns `repos: []` + `count: N` -- forward verbatim so
+            # the caller never has to second-guess the envelope.
+            return {
+                "success": True,
+                "repos": inner.get("repos", []),
+                "count": int(inner.get("count", 0)),
+            }
+        return {
+            "success": False,
+            "error": data.get("message", "Unknown list error"),
+            "code": data.get("code"),
+        }
+
+    def bind_unbind(
+        self,
+        *,
+        alias: str | None = None,
+        all: bool = False,
+        platform: str = "telegram",
+    ) -> dict[str, Any]:
+        """Remove one or all repo bindings for the current LS user.
+
+        Calls ``POST /api/bot/bind/unbind`` (T-R083 / T-122). The server
+        has two mutually exclusive modes:
+
+        - **Single alias** (``alias="my-repo", all=False``): removes that
+          one binding. If it was the active one, the server atomically
+          promotes the next survivor as the new active row.
+        - **Wipe all** (``all=True``): removes every binding for
+          ``(user_id, platform)``. ``alias`` is ignored when ``all=True``
+          (the server gives ``all`` priority as a safety net).
+
+        Exactly one of ``alias`` / ``all`` must be truthy -- passing
+        neither raises a client-side ``ValueError`` so the caller cannot
+        accidentally issue an empty unbind request (server would reject
+        with ``1001`` but we catch it earlier for a clearer traceback).
+
+        Returns (single alias mode)::
+
+            {
+                "success": True,
+                "deleted": {...describeBinding()...},
+                "deleted_uuid": str,              # LS uuid for local clone cleanup
+                "new_active": {...} | None,
+                "remaining_count": int,
+            }
+
+        Returns (all mode)::
+
+            {
+                "success": True,
+                "deleted_count": int,
+                "deleted": [ {...}, ... ],
+            }
+
+        Failure shape across both modes::
+
+            {"success": False, "error": str, "code": int | None}
+        """
+        if not all and not alias:
+            raise ValueError(
+                "bind_unbind requires either alias=<str> or all=True",
+            )
+
+        url = self.endpoint("bind_unbind")
+        payload: dict[str, Any] = {"platform": platform}
+        if all:
+            payload["all"] = True
+        else:
+            payload["alias"] = alias
+
+        logger.debug(
+            "Unbinding: %s platform=%s",
+            "all" if all else f"alias={alias!r}",
+            platform,
+        )
+
+        try:
+            resp = httpx.post(
+                url,
+                json=payload,
+                headers=self.auth_headers(),
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.TimeoutException:
+            return {"success": False, "error": f"Unbind timeout ({self._timeout}s)"}
+        except httpx.HTTPStatusError as exc:
+            return self._parse_error_response(exc, "Unbind")
+        except httpx.RequestError as exc:
+            return {"success": False, "error": f"Network error: {exc}"}
+
+        if data.get("code") == 0:
+            inner = data.get("data", {}) or {}
+            if all:
+                return {
+                    "success": True,
+                    "deleted_count": int(inner.get("deleted_count", 0)),
+                    "deleted": inner.get("deleted", []),
+                }
+            return {
+                "success": True,
+                "deleted": inner.get("deleted"),
+                "deleted_uuid": inner.get("deleted_uuid", ""),
+                "new_active": inner.get("new_active"),
+                "remaining_count": int(inner.get("remaining_count", 0)),
+            }
+        return {
+            "success": False,
+            "error": data.get("message", "Unknown unbind error"),
+            "code": data.get("code"),
         }
 
     # -- Bot Notify ----------------------------------------------------------

@@ -139,6 +139,25 @@ class TestInboxSkillExecute:
         assert result.success
         assert today in result.output
 
+    def test_manifest_write_target_inbox(self, tmp_path: Path) -> None:
+        inbox_dir = tmp_path / "C-Inbox"
+        inbox_dir.mkdir()
+        inbox_file = inbox_dir / "2026-04-14.md"
+        inbox_file.write_text(_SAMPLE_INBOX, encoding="utf-8")
+
+        context = SkillContext(
+            source_file=tmp_path / "A-ChatMD" / "chat.md",
+            source_line=1,
+            workspace=tmp_path,
+            interaction_root=tmp_path / "A-ChatMD",
+            write_targets={"inbox": inbox_dir},
+        )
+
+        skill = InboxSkill()
+        result = skill.execute("2026-04-14", {}, context)
+        assert result.success
+        assert "3" in result.output
+
 
 class TestFirstMeaningfulLine:
     """Test the helper function."""

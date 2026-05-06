@@ -41,11 +41,25 @@ def main() -> None:
 @main.command()
 @click.argument("path", type=click.Path())
 @click.option("--no-git", is_flag=True, default=False, help="Skip Git initialization.")
-def init(path: str, no_git: bool) -> None:
+@click.option(
+    "--profile",
+    type=click.Choice(["basic", "personal", "twin"]),
+    default="basic",
+    show_default=True,
+    help="Workspace profile to initialize.",
+)
+@click.option(
+    "--language",
+    type=click.Choice(["en", "cn"]),
+    default="en",
+    show_default=True,
+    help="Initial content language.",
+)
+def init(path: str, no_git: bool, profile: str, language: str) -> None:
     """Initialize a ChatMD workspace at PATH."""
     from chatmd.commands.init_workspace import run_init
 
-    run_init(path, no_git=no_git)
+    run_init(path, no_git=no_git, profile=profile, language=language)
 
 
 @main.command()

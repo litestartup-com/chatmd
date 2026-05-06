@@ -109,6 +109,19 @@ chatmd init ~/my-workspace          # Linux/macOS
 chatmd init %USERPROFILE%\my-workspace   # Windows
 ```
 
+By default, `chatmd init` creates the classic minimal workspace. You can also create a personal knowledge workspace:
+
+```bash
+chatmd init ~/my-life --profile personal --language en
+chatmd init ~/my-twin --profile twin --language cn
+```
+
+- **`basic`** — Default minimal workspace (`.chatmd/` + `chatmd/`)
+- **`personal`** — Dashboard, Inbox, Daily, Projects, Notes, Resources, Archive
+- **`twin`** — Personal plus People, Goals, Habits, Decisions, Health
+
+Profile workspaces generate `.chatmd/kb.yaml` and `.chatmd/privacy.yaml` so ChatMarkdown can locate the right chat, inbox, resources, and sensitive areas without hard-coding folder names.
+
 ### Step 3: Configure AI Provider (optional)
 
 To use AI features like `/ask` and `/translate`, configure an API key in `.chatmd/agent.yaml`:
@@ -238,6 +251,12 @@ The Agent detects file changes, executes commands, and writes results back into 
 | `/sync` | | Git sync |
 | `/log [N]` | | View audit log |
 | `/upload` | `/up` | Upload local images to cloud |
+| `/bind <token>` | | Bind this workspace to Telegram Bot |
+| `/bind status` | | List all bound repositories and mark active/current workspace |
+| `/inbox` | | Sync Bot messages into the local inbox |
+| `/unbind` | | Unbind the current workspace |
+| `/unbind <alias>` | | Unbind a repository by alias |
+| `/unbind --all` | | Clear all bindings for the current account |
 
 ### Tool Invocation (LiteStartup)
 

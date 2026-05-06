@@ -79,15 +79,18 @@ class Config:
         self.chatmd_dir = workspace / ".chatmd"
         self._agent: dict[str, Any] = {}
         self._user: dict[str, Any] = {}
+        self._kb: dict[str, Any] = {}
         self.load()
 
     def load(self) -> None:
         """Load configuration files, merging with defaults."""
         agent_path = self.chatmd_dir / "agent.yaml"
         user_path = self.chatmd_dir / "user.yaml"
+        kb_path = self.chatmd_dir / "kb.yaml"
 
         agent_raw = self._load_yaml(agent_path) if agent_path.exists() else {}
         user_raw = self._load_yaml(user_path) if user_path.exists() else {}
+        self._kb = self._load_yaml(kb_path) if kb_path.exists() else {}
 
         self._agent = _resolve_env_vars(_deep_merge(_DEFAULT_AGENT_CONFIG, agent_raw))
         self._user = _resolve_env_vars(_deep_merge(_DEFAULT_USER_CONFIG, user_raw))
@@ -115,33 +118,66 @@ class Config:
         return self._user
 
     @property
+    def kb(self) -> dict[str, Any]:
+        """Return the workspace knowledge base manifest."""
+        return self._kb
+
+    @property
     def aliases(self) -> dict[str, str]:
         """Return user-defined command aliases."""
         return self._user.get("aliases", {})
 
     @property
     def interaction_dir(self) -> str:
-        """Return the interaction directory name (hardcoded 'chatmd')."""
-        return _INTERACTION_DIR
+        """Return the interaction directory name."""
+        return self._kb_path("roots.agent", _INTERACTION_DIR).rstrip("/")
 
     def interaction_path(self, relative: str) -> Path:
         """Resolve a file path relative to the interaction directory.
 
         Example::
 
-            cfg.interaction_path("chat.md")  →  workspace / chatmd / chat.md
+            cfg.interaction_path("chat.md")  ->  workspace / chatmd / chat.md
         """
-        return self.workspace / _INTERACTION_DIR / relative
+        normalized = relative.replace("\\", "/").lstrip("./")
+        entrypoint_key = {
+            "chat.md": "chat",
+            "cron.md": "cron",
+            "notification.md": "notification",
+        }.get(normalized)
+        if entrypoint_key:
+            entrypoint = self._kb_path(f"entrypoints.{entrypoint_key}", "")
+            if entrypoint:
+                return self.workspace / entrypoint
+        return self.workspace / self.interaction_dir / relative
+
+    def write_target_path(self, name: str, default: str) -> Path:
+        """Resolve a configured write target path."""
+        return self.workspace / self._kb_path(f"write_targets.{name}", default)
+
+    def write_target_paths(self) -> dict[str, Path]:
+        """Return all configured write target paths."""
+        targets = self._kb.get("write_targets", {})
+        if not isinstance(targets, dict):
+            return {}
+        return {
+            str(name): self.workspace / str(path)
+            for name, path in targets.items()
+            if isinstance(path, str) and path
+        }
 
     def resolve_watch_paths(self) -> list[str]:
-        """Return watch_dirs with 'chatmd/' always included."""
+        """Return watch_dirs with the interaction root always included."""
         watcher_cfg = self._agent.get("watcher", {})
         dirs = list(watcher_cfg.get("watch_dirs", ["chatmd/"]))
-        # Ensure chatmd/ is always monitored
-        idir_entry = _INTERACTION_DIR + "/"
+        idir_entry = self.interaction_dir.rstrip("/") + "/"
         if idir_entry not in dirs:
             dirs.insert(0, idir_entry)
         return dirs
+
+    def _kb_path(self, dotted_key: str, default: str) -> str:
+        value = self._get_nested(self._kb, dotted_key)
+        return value if isinstance(value, str) and value else default
 
     def get_trigger_mode(self) -> str:
         """Return the current trigger mode: 'suffix' or 'save'."""

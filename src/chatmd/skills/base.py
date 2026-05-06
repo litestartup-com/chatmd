@@ -54,6 +54,7 @@ class SkillContext:
     source_line: int
     workspace: Path
     interaction_root: Path | None = None
+    write_targets: dict[str, Path] | None = None
 
 
 class Skill(ABC):

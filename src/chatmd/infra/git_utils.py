@@ -47,6 +47,74 @@ def get_git_remote_url(workspace: Path) -> str | None:
         return None
 
 
+def derive_repo_alias(workspace: Path, repo_url: str = "") -> str:
+    """Derive a user-friendly short alias for a binding (T-125).
+
+    Resolution order is deliberately *workspace-first* because the local
+    directory name is the handle the user actually types and recognises
+    -- e.g. they `cd note-kaka` daily and so expect `/use note-kaka` to
+    just work, even when their remote URL has a longer or differently
+    cased path.
+
+    Steps:
+      1. Run ``git rev-parse --show-toplevel`` to find the canonical Git
+         root (handles the case where the user runs `/bind` from a sub-
+         directory of the worktree). Take its basename.
+      2. Fall back to ``basename(workspace)`` when git is unavailable
+         or the workspace isn't yet a Git repo (defensive -- bind.py
+         normally guards against this earlier, but the helper stays
+         independently safe).
+      3. Final fallback: parse ``repo_url`` last segment with the
+         trailing ``.git`` stripped. Splits on both ``/`` and ``:`` so
+         SSH-style URLs (``git@host:owner/name.git``) yield ``name``.
+      4. Empty string if nothing resolvable -- the LS server then synth-
+         esises an effective_alias from the URL on its side, so an empty
+         alias is a tolerable (not a fatal) outcome.
+
+    The returned value is a bare token (no path separators), trimmed,
+    and never includes a trailing ``.git``.
+    """
+    # Step 1: ask Git for the worktree root (most reliable).
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0:
+            root = result.stdout.strip()
+            if root:
+                name = Path(root).name
+                if name and name not in (".", ".."):
+                    return name
+    except (subprocess.SubprocessError, OSError, FileNotFoundError):
+        # Git missing, timeout, permission issue -- continue to fallbacks.
+        pass
+
+    # Step 2: workspace basename (works for non-Git workspaces too).
+    try:
+        ws_name = Path(workspace).resolve().name
+        if ws_name and ws_name not in (".", ".."):
+            return ws_name
+    except OSError:
+        pass
+
+    # Step 3: URL basename (last segment, .git stripped, SSH-aware).
+    if repo_url:
+        url = repo_url.strip()
+        url = re.sub(r"\.git$", "", url, flags=re.IGNORECASE)
+        # Split on both '/' and ':' so SSH form yields the repo name only.
+        parts = re.split(r"[/:]+", url)
+        if parts:
+            last = parts[-1].strip()
+            if last:
+                return last
+
+    return ""
+
+
 def ssh_to_https(url: str) -> str:
     """Convert an SSH Git URL to HTTPS format.
 

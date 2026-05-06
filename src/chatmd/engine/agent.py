@@ -78,6 +78,8 @@ class Agent:
         self._config = Config(self._workspace)
         self._file_writer = FileWriter()
         self._parser = Parser(command_prefix=self._config.get("commands.prefix", "/"))
+        self._interaction_root = self._config.interaction_path(".")
+        self._write_targets = self._config.write_target_paths()
         self._init_suffix_trigger()
         self._router = Router()
         self._scheduler = Scheduler(
@@ -297,6 +299,7 @@ class Agent:
             source_line=cmd.source_line,
             workspace=self._workspace,
             interaction_root=getattr(self, "_interaction_root", None),
+            write_targets=getattr(self, "_write_targets", {}),
         )
         end_line = getattr(cmd, "end_line", 0)
 
@@ -448,6 +451,7 @@ class Agent:
             source_line=cmd.source_line,
             workspace=self._workspace,
             interaction_root=getattr(self, "_interaction_root", None),
+            write_targets=getattr(self, "_write_targets", {}),
         )
 
         try:
@@ -595,6 +599,13 @@ class Agent:
                 self._write_back(filepath, source_line, end_line, raw_text, combined)
             else:
                 self._write_back(filepath, source_line, end_line, raw_text, output)
+        elif result.informational and result.output:
+            # T-R083 / T-123.2 hotfix: informational results (e.g. /bind
+            # missing-token help) carry their human-friendly text in `output`,
+            # not `error` — render it verbatim instead of the generic
+            # ❌ {error or 'Unknown error'} template, which would mask the
+            # informational message and confuse the user.
+            self._write_back(filepath, source_line, end_line, raw_text, result.output)
         else:
             error_text = f"> ❌ {result.error or t('agent.unknown_error')}"
             self._write_back(filepath, source_line, end_line, raw_text, error_text)
@@ -905,6 +916,7 @@ class Agent:
             source_line=0,
             workspace=self._workspace,
             interaction_root=getattr(self, "_interaction_root", None),
+            write_targets=getattr(self, "_write_targets", {}),
         )
 
         # Blacklist check — block dangerous commands even if hand-written in cron.md
@@ -1101,7 +1113,6 @@ class Agent:
 
         # /new — archive chat.md and create fresh session
         from chatmd.infra.index_manager import IndexManager
-        self._interaction_root = self._config.interaction_path(".")
         index_manager = IndexManager(
             self._workspace, interaction_root=self._interaction_root,
         )
@@ -1141,6 +1152,11 @@ class Agent:
         bind_skill = BindSkill(provider=self._litestartup)
         self._router.register(bind_skill)
 
+        # /unbind — Bot multi-repo unbinding (T-R083 / T-126)
+        from chatmd.skills.unbind import UnbindSkill
+        unbind_skill = UnbindSkill(provider=self._litestartup)
+        self._router.register(unbind_skill)
+
         # /la — LiteAdapter passthrough to LS /ai/chat (T-MVP01 段 c)
         from chatmd.skills.la import LaSkill
         la_skill = LaSkill(provider=self._litestartup)
@@ -1148,7 +1164,7 @@ class Agent:
 
         logger.info(
             "Infra skills registered: sync, log, new, upload, notify, confirm, "
-            "inbox, bind, la",
+            "inbox, bind, unbind, la",
         )
 
     def _load_custom_skills(self) -> None:
@@ -1161,7 +1177,8 @@ class Agent:
             source_file=self._workspace,
             source_line=0,
             workspace=self._workspace,
-            interaction_root=self._interaction_root,
+            interaction_root=getattr(self, "_interaction_root", None),
+            write_targets=getattr(self, "_write_targets", {}),
         )
 
         skills = load_plugin_skills(skills_dir, skills_config, context)
@@ -1187,6 +1204,7 @@ class Agent:
 
     _LOCALE_TO_LANGUAGE: dict[str, str] = {
         "en": "en",
+        "cn": "zh",
         "zh-CN": "zh",
         "zh_CN": "zh",
         "zh": "zh",

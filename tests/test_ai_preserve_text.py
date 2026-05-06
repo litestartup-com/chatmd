@@ -145,3 +145,114 @@ class TestWriteSkillResultAI:
 
         # Empty input: no preserved text prefix, just the output
         assert new_text.startswith("> chatmd /ask")
+
+
+class TestWriteSkillResultInformational:
+    """Regression tests for T-R083 / T-123.2 — informational result rendering.
+
+    Bug D (chatmd-dev): a SkillResult with success=False, informational=True
+    used to be rendered as `❌ {error or 'Unknown error'}`. Since informational
+    results carry their human-friendly text in `output` and leave `error=None`,
+    users saw "❌ Unknown error" instead of e.g. the /bind missing-token help.
+
+    Fix: _write_skill_result now branches on `informational and output` to
+    render the output verbatim, falling back to the error template only for
+    real failures. These tests guard against regressing.
+    """
+
+    def _make_agent_mock(self):
+        """Create a minimal mock agent with the methods we need."""
+        agent = MagicMock(spec=Agent)
+        agent._format_output = Agent._format_output.__get__(agent, Agent)
+        agent._extract_user_text = Agent._extract_user_text
+        agent._write_skill_result = Agent._write_skill_result.__get__(agent, Agent)
+        agent._write_back = MagicMock()
+        agent._kernel_gate = MagicMock()
+        agent._AI_INPUT_TRUNCATE_LEN = 80
+        agent._RICH_TEXT_RE = Agent._RICH_TEXT_RE
+        agent._truncate_input = Agent._truncate_input
+        return agent
+
+    def test_informational_result_renders_output_verbatim(self):
+        """success=False + informational=True + output=<help text> → render output as-is."""
+        agent = self._make_agent_mock()
+        help_text = (
+            "⚠️ You already have an active binding:\n"
+            "- Platform: **telegram**\n"
+            "- Repo: `https://github.com/u***/r***.git`"
+        )
+        result = SkillResult(
+            success=False,
+            output=help_text,
+            error=None,
+            informational=True,
+        )
+        filepath = Path("/tmp/chat.md")
+
+        agent._write_skill_result(
+            filepath, 1, "/bind ghp_xxx", "bind", 0.0,
+            "general", result, input_text="ghp_xxx", end_line=0,
+        )
+
+        agent._write_back.assert_called_once()
+        call_args = agent._write_back.call_args
+        new_text = call_args[0][4]
+
+        # Must NOT be the generic "Unknown error" template
+        assert "Unknown error" not in new_text
+        assert "❌" not in new_text
+        # Must render the informational output verbatim
+        assert new_text == help_text
+
+    def test_real_error_still_uses_error_template(self):
+        """success=False + informational=False + error=<msg> → render ❌ <msg>."""
+        agent = self._make_agent_mock()
+        result = SkillResult(
+            success=False,
+            output="",
+            error="Network timeout after 30s",
+            informational=False,
+        )
+        filepath = Path("/tmp/chat.md")
+
+        agent._write_skill_result(
+            filepath, 1, "/bind ghp_xxx", "bind", 0.0,
+            "general", result, input_text="ghp_xxx", end_line=0,
+        )
+
+        agent._write_back.assert_called_once()
+        call_args = agent._write_back.call_args
+        new_text = call_args[0][4]
+
+        # Real errors keep the ❌ template + concrete error message
+        assert "❌" in new_text
+        assert "Network timeout after 30s" in new_text
+
+    def test_informational_without_output_falls_through_to_error_template(self):
+        """Defensive: informational=True but output='' should still fall through to error template.
+
+        This shouldn't happen in practice (informational implies output carries
+        the message) but the guard prevents a silent empty render if a skill
+        author misuses the flag.
+        """
+        agent = self._make_agent_mock()
+        result = SkillResult(
+            success=False,
+            output="",  # empty
+            error=None,
+            informational=True,
+        )
+        filepath = Path("/tmp/chat.md")
+
+        agent._write_skill_result(
+            filepath, 1, "/bind", "bind", 0.0,
+            "general", result, input_text="", end_line=0,
+        )
+
+        agent._write_back.assert_called_once()
+        call_args = agent._write_back.call_args
+        new_text = call_args[0][4]
+
+        # Falls through to "❌ Unknown error" — visible failure beats silent
+        assert "❌" in new_text
+        assert "Unknown error" in new_text or "unknown" in new_text.lower()
