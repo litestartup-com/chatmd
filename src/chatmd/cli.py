@@ -317,3 +317,71 @@ def doctor(
         no_network=no_network,
     )
     sys.exit(exit_code)
+
+
+@main.group("config")
+def config_group() -> None:
+    """View and modify ChatMD configuration."""
+
+
+@config_group.command("list")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+def config_list(workspace: str) -> None:
+    """List all configuration values."""
+    from chatmd.commands.config_cmd import run_config_list
+
+    run_config_list(workspace)
+
+
+@config_group.command("get")
+@click.argument("key")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+def config_get(key: str, workspace: str) -> None:
+    """Get a configuration value by key."""
+    from chatmd.commands.config_cmd import run_config_get
+
+    run_config_get(workspace, key)
+
+
+@config_group.command("set")
+@click.argument("key")
+@click.argument("value")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+def config_set(key: str, value: str, workspace: str) -> None:
+    """Set a configuration value."""
+    from chatmd.commands.config_cmd import run_config_set
+
+    run_config_set(workspace, key, value)
+
+
+@config_group.command("init")
+@click.option(
+    "--workspace",
+    "-w",
+    type=click.Path(exists=True),
+    default=".",
+    help="Workspace directory (default: current dir).",
+)
+def config_init(workspace: str) -> None:
+    """Interactive configuration wizard."""
+    from chatmd.commands.config_cmd import run_config_init
+
+    run_config_init(workspace)

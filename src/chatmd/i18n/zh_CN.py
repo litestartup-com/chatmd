@@ -1246,4 +1246,18 @@ MESSAGES: dict[str, str] = {
     "la.confirm.consumed": "这个操作已经执行过，不能重复确认",
     "la.confirm.expired": "Token 已过期（有效期 10 分钟），请重新发起命令",
     "la.confirm.generic": "确认失败：{message}",
+    # ── Config command ─────────────────────────────────────────────────
+    "config.no_workspace": "未找到 .chatmd/ 目录，请先运行 `chatmd init <路径>`。",
+    "config.empty": "未找到任何配置。",
+    "config.key_not_found": "未找到配置项：{name}",
+    "config.set_success": "✅ 已将 {name} 写入 {file}",
+    "config.unknown_key": "未知配置项：{name}。使用 `chatmd config list` 查看可用配置。",
+    "config.invalid_value": "{name} 的值无效：{val}",
+    "config.init.welcome": "欢迎配置 ChatMarkdown！",
+    "config.init.provider_prompt": "选择 AI 提供商",
+    "config.init.api_key_prompt": "输入 API Key（留空跳过）",
+    "config.init.api_url_prompt": "输入 API URL",
+    "config.init.language_prompt": "选择语言",
+    "config.init.success": "✅ 配置已保存。",
+    "config.init.doctor_hint": "💡 运行 `chatmd doctor` 验证配置是否正确。",
 }

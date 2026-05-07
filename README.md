@@ -21,6 +21,29 @@ ChatMarkdown (CLI: `chatmd`) lets you interact with an AI Agent through Markdown
 
 ## Quick Start
 
+### One-Line Install (Recommended)
+
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://www.chatmarkdown.org/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://www.chatmarkdown.org/install.ps1 | iex
+```
+
+> The script auto-detects Python, offers to install/update if needed, then installs pipx + chatmd. Fully automatic.
+
+---
+
+### Manual Install
+
+<details>
+<summary>Expand manual install steps</summary>
+
 ### Step 0: Install Python (if needed)
 
 ChatMarkdown requires **Python 3.10 or later**. Open a terminal and type `python --version`. If you see a version number (e.g. `Python 3.12.x`), skip to the next step.
@@ -101,6 +124,8 @@ Verify installation:
 ```bash
 chatmd --version
 ```
+
+</details>
 
 ### Step 2: Initialize a Workspace
 
@@ -314,6 +339,10 @@ chatmd service status          # Check system service status
 chatmd service start           # Start the installed service
 chatmd service stop            # Stop the service (without uninstalling)
 chatmd service restart         # Restart the service
+chatmd config list             # List all configuration
+chatmd config get <key>        # Get a single config value
+chatmd config set <key> <value>  # Set a config value
+chatmd config init             # Interactive configuration wizard
 chatmd doctor                  # Diagnose environment / workspace / service / provider / git
 chatmd upgrade [-w <workspace>] --full  # Ensure workspace structure is complete
 chatmd --version               # Show version

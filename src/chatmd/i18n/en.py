@@ -1281,4 +1281,23 @@ MESSAGES: dict[str, str] = {
         "Token expired (10 min TTL), please re-issue the command"
     ),
     "la.confirm.generic": "Confirm failed: {message}",
+    # ── Config command ─────────────────────────────────────────────────
+    "config.no_workspace": (
+        "No .chatmd/ directory found. Run `chatmd init <path>` first."
+    ),
+    "config.empty": "No configuration found.",
+    "config.key_not_found": "Key not found: {name}",
+    "config.set_success": "\u2705 Set {name} in {file}",
+    "config.unknown_key": (
+        "Unknown config key: {name}. "
+        "Use `chatmd config list` to see available keys."
+    ),
+    "config.invalid_value": "Invalid value for {name}: {val}",
+    "config.init.welcome": "Welcome to ChatMarkdown configuration!",
+    "config.init.provider_prompt": "Select AI provider",
+    "config.init.api_key_prompt": "Enter your API key (leave empty to skip)",
+    "config.init.api_url_prompt": "Enter API URL",
+    "config.init.language_prompt": "Select language",
+    "config.init.success": "\u2705 Configuration saved.",
+    "config.init.doctor_hint": "💡 Run `chatmd doctor` to verify your setup.",
 }
