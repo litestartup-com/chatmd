@@ -26,16 +26,24 @@ ChatMarkdown (CLI: `chatmd`) lets you interact with an AI Agent through Markdown
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://www.chatmarkdown.org/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/litestartup-com/chatmd/main/scripts/install.sh | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://www.chatmarkdown.org/install.ps1 | iex
+irm https://raw.githubusercontent.com/litestartup-com/chatmd/main/scripts/install.ps1 | iex
 ```
 
 > The script auto-detects Python, offers to install/update if needed, then installs pipx + chatmd. Fully automatic.
+>
+> **Mirror (fallback if GitHub is unreachable):**
+> ```bash
+> # macOS / Linux
+> curl -fsSL https://www.chatmarkdown.org/install.sh | sh
+> # Windows
+> irm https://www.chatmarkdown.org/install.ps1 | iex
+> ```
 
 ---
 
