@@ -5,16 +5,33 @@
 [![Python](https://img.shields.io/pypi/pyversions/chatmd)](https://pypi.org/project/chatmd/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Your local-first AI agent, driven by text.
+> **AI that lives in your Markdown. Any editor. Any model.**
+>
+> Every AI reply becomes a Markdown file you own.
 
-ChatMarkdown (CLI: `chatmd`) lets you interact with an AI Agent through Markdown files in any text editor. No need to leave your editor — type a command, save, and get AI answers, translations, file operations, and more.
+<p align="center">
+  <video src="https://www.chatmarkdown.org/chatmd_readme_demo.mp4"
+         autoplay loop muted playsinline width="100%" poster="https://www.chatmarkdown.org/chatmd_readme_demo.png">
+    <img src="https://www.chatmarkdown.org/chatmd_readme_demo.gif"
+         alt="ChatMarkdown demo: AI that lives in your Markdown. Answers grow inside your daily.md file in Obsidian."
+         width="100%">
+  </video>
+</p>
+
+ChatMarkdown (CLI: `chatmd`) is a background daemon: **you write Markdown in Obsidian / Typora / Vim / VS Code; AI answers right inside your files.** Conversations don't evaporate into some session history — every prompt and every reply lives permanently in your `.md` files: greppable, diffable, git-trackable, ready to publish.
+
+**Not a coding agent** (leave code to Claude Code / Cursor) · **not a terminal chat tool** (you never open a terminal) · **not an Obsidian plugin** (editor-agnostic) · **not an LLM app framework** (no LangChain business).
+
+**Built for**: writers / bloggers / Obsidian power users / translators and journalists / freelancers / digital nomads — anyone who uses Markdown as a primary work surface.
 
 ## Features
 
-- **Local-first** — All data stored in local Markdown files, works offline
-- **Text-driven** — Trigger via `/command` slash commands or `@ai{}` natural language
-- **Editor-agnostic** — VS Code, Vim, Typora… any editor that can edit `.md` files
-- **Deterministic routing** — Code-centric, not AI-centric; command execution is predictable
+- **Conversation as artifact** — Every AI reply becomes a Markdown file you own, greppable forever
+- **Editor-agnostic** — Obsidian / Typora / VS Code / Vim / nvim — any editor that saves `.md`
+- **Any model** — OpenAI-compatible backend (incl. Ollama / llama.cpp local); not locked to Anthropic / OpenAI
+- **Async trigger** — Save your file → AI writes into it where it belongs, without interrupting your flow
+- **Local-first** — All data in local Markdown files, fully offline-capable
+- **Deterministic routing** — Code-centric, not AI-centric; `/command` execution is predictable and auditable
 - **Extensible** — YAML declarative Skills + Python custom Skills + hot reload
 - **Secure** — KernelGate injection prevention + confirmation window + audit log
 - **Git sync** — Auto commit + pull/push, seamless multi-device collaboration
@@ -157,7 +174,12 @@ Profile workspaces generate `.chatmd/kb.yaml` and `.chatmd/privacy.yaml` so Chat
 
 ### Step 3: Configure AI Provider (optional)
 
-To use AI features like `/ask` and `/translate`, configure an API key in `.chatmd/agent.yaml`:
+To use AI features like `/ask` and `/translate`, configure a provider in `.chatmd/agent.yaml`.
+ChatMarkdown supports **two equivalent routes** — pick whichever fits.
+
+#### Route A — LiteStartup (recommended, batteries included)
+
+LiteStartup is the official partner of ChatMarkdown, offering a unified API and multi-model routing. Sign up to get a free API key without juggling multiple LLM accounts.
 
 ```yaml
 ai:
@@ -166,14 +188,37 @@ ai:
       type: litestartup
       api_url: https://api.litestartup.com/client/v2/ai/chat
       api_key: ${LITEAGENT_API_KEY}  # environment variable, or paste directly
+      model: default
+      timeout: 60
 ```
-
-Then set the environment variable:
 
 ```bash
 export LITEAGENT_API_KEY="your-api-key"   # Linux/macOS
 # set LITEAGENT_API_KEY=your-api-key      # Windows
 ```
+
+👉 Get a free key at [litestartup.com](https://litestartup.com).
+
+#### Route B — OpenAI-compatible (BYOK — bring your own key)
+
+Already have an OpenAI / DeepSeek / Anthropic / OpenRouter / Ollama account? Plug it in directly:
+
+```yaml
+ai:
+  providers:
+    - name: openai
+      type: openai
+      api_url: https://api.openai.com/v1/chat/completions
+      api_key: ${OPENAI_API_KEY}
+      model: gpt-4o-mini
+      timeout: 60
+```
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+```
+
+> 💡 **Any service that speaks the OpenAI Chat Completions protocol works** — DeepSeek, OpenRouter, Anthropic (via proxy), Groq, local Ollama, etc. Just swap `api_url` and `model`.
 
 > 💡 Local commands like `/date` and `/help` work without an AI provider.
 
@@ -298,18 +343,52 @@ The Agent detects file changes, executes commands, and writes results back into 
 | `/la <input>` | Send a free-form request to LiteStartup; the agent picks the right tool (`contact.create`, `email.send`, `blog.publish`, …) and executes it. |
 | `/la confirm cft_<token>` | Phase-2 confirmation for destructive tools (`contact.delete`, `email.delete`, `blog.unpublish`, …). LiteStartup returns a confirmation card with a `cft_<32 hex>` token; copy-paste the suggested command into the chat to actually execute. Tokens expire in 10 minutes; format is validated locally so a typo never reaches the network. |
 
-### Trigger Methods
+### Trigger Methods (4 ways — learn them in order)
 
-- **Slash commands**: `/command input`
-- **@ai{} inline**: `Please help me @ai{summarize this paragraph}`
-- **@ai{} multi-line block**:
-  ```
-  @ai{
-  Translate the following:
-  Hello World
-  }
-  ```
-- **Suffix signal**: `Summarize this for me;` (enable in config)
+> You don't need all four on day one. Mastering slash commands alone covers 80% of daily use.
+
+**Day 1 — Slash commands** (the most common, start here)
+
+```markdown
+/help
+/date
+/ask What is quantum computing?
+```
+
+Save the file and the Agent runs the command, writing the answer back. See [Commands](#commands) for the full list.
+
+**Day 2 — `@ai{}` inline** (embed AI naturally while writing)
+
+```markdown
+Please help me @ai{summarize the paragraph above}
+```
+
+No command name to memorize — describe what you want in plain English. Best when embedded mid-paragraph.
+
+**Day 3 — `@ai{}` multi-line block** (long prompts)
+
+```markdown
+@ai{
+Translate the following into Japanese, formal business tone:
+Hello World
+}
+```
+
+Use this when the prompt spans multiple lines or needs careful context.
+
+**Day 4 — Suffix signal** (advanced — for auto-save editors like Obsidian)
+
+```markdown
+Summarize this for me;
+```
+
+Only lines ending with `;` trigger commands. Avoids the "save storm" problem when the editor saves on every keystroke. Enable with:
+
+```bash
+chatmd mode suffix
+```
+
+> 💡 **Beyond the basics**: once you're comfortable with all four triggers, write your own YAML / Python skills under `.chatmd/skills/`. See [Custom Skills](#custom-skills).
 
 ## Multi-Session Conversations
 
