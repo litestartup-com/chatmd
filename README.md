@@ -10,12 +10,9 @@
 > Every AI reply becomes a Markdown file you own.
 
 <p align="center">
-  <video src="https://www.chatmarkdown.org/chatmd_readme_demo.mp4"
-         autoplay loop muted playsinline width="100%" poster="https://www.chatmarkdown.org/chatmd_readme_demo.png">
-    <img src="https://www.chatmarkdown.org/chatmd_readme_demo.gif"
-         alt="ChatMarkdown demo: AI that lives in your Markdown. Answers grow inside your daily.md file in Obsidian."
-         width="100%">
-  </video>
+  <img src="https://www.chatmarkdown.org/chatmd_readme_demo.gif"
+       alt="ChatMarkdown demo: AI that lives in your Markdown. Answers grow inside your daily.md file in Obsidian."
+       width="100%">
 </p>
 
 ChatMarkdown (CLI: `chatmd`) is a background daemon: **you write Markdown in Obsidian / Typora / Vim / VS Code; AI answers right inside your files.** Conversations don't evaporate into some session history — every prompt and every reply lives permanently in your `.md` files: greppable, diffable, git-trackable, ready to publish.
